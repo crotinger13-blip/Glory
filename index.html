@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+  <link rel="manifest" href="/King-Me/manifest.json"/>
+  <title>King Me</title>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Courier+Prime:wght@400;700&family=Inter:wght@400;600&family=Cinzel:wght@500;600;700&family=Cinzel+Decorative:wght@700;900&family=EB+Garamond:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="styles.css">
+  <!-- Firebase (leaderboard only) — compat build so it works as plain
+       <script> tags alongside the rest of this single-file game, no bundler
+       or type="module" needed. Safe to load even before FIREBASE_CONFIG
+       below is filled in; every leaderboard function checks firebaseDb first
+       and no-ops if it's null, so the rest of the game is unaffected. -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+</head>
+<body>
+
+<!-- MAIN MENU -->
+<div class="main-menu" id="mainMenu">
+  <div class="main-menu-bg"></div>
+  <div class="main-menu-scrim"></div>
+  <div class="menu-title menu-title-top">King Me</div>
+  <div class="main-menu-content">
+    <div class="menu-btn-col">
+      <button class="menu-btn" id="menuNewRunPlusBtn">New Run</button>
+      <button class="menu-btn" id="menuNewRunBtn">New Puzzle</button>
+      <button class="menu-btn menu-btn-secondary" id="menuCollectionBtn">Card Collection</button>
+      <button class="menu-btn menu-btn-secondary" id="menuLeaderboardBtn">Leaderboard</button>
+      <button class="menu-btn menu-btn-secondary" id="menuContinueBtn" style="display:none;">Continue Run</button>
+    </div>
+  </div>
+</div>
+
+<!-- NEW PUZZLE HUB — a fully standalone sub-game: its own card collection,
+     starter deck, stats, save slot, and leaderboard, entirely separate from
+     New Run. Mirrors the main menu's own layout/structure. -->
+<div class="main-menu" id="puzzleMenu">
+  <div class="main-menu-bg"></div>
+  <div class="main-menu-scrim"></div>
+  <div class="menu-title menu-title-top">King Me</div>
+  <div class="main-menu-content">
+    <div class="menu-btn-col">
+      <button class="menu-btn" id="puzzleStartBtn">Start</button>
+      <button class="menu-btn menu-btn-secondary" id="puzzleCollectionBtn">Card Collection</button>
+      <button class="menu-btn menu-btn-secondary" id="puzzleLeaderboardBtn">Leaderboard</button>
+      <button class="menu-btn menu-btn-secondary" id="puzzleContinueBtn" style="display:none;">Continue Run</button>
+      <button class="menu-btn menu-btn-secondary" id="puzzleBackBtn">&larr; Back to Main Menu</button>
+    </div>
+  </div>
+</div>
+
+<!-- CARD COLLECTION -->
+<div class="collection-screen" id="collectionScreen">
+  <div class="collection-header">
+    <button class="collection-back" id="collectionBackBtn">&larr; Back</button>
+    <div class="collection-title" id="collectionTitle">Card Collection</div>
+    <div class="collection-count" id="collectionCount">0/0</div>
+  </div>
+  <div class="collection-scroll">
+    <div class="stats-section">
+      <div class="starter-deck-title">Your Stats</div>
+      <div class="stats-grid" id="statsGrid"></div>
+    </div>
+    <div class="collection-grid" id="collectionGrid"></div>
+    <div class="starter-deck-section">
+      <div class="starter-deck-title">Starter Deck</div>
+      <div class="starter-deck-grid" id="starterDeckGrid"></div>
+    </div>
+  </div>
+</div>
+
+<!-- LEADERBOARD -->
+<div class="collection-screen" id="leaderboardScreen">
+  <div class="collection-header">
+    <button class="collection-back" id="leaderboardBackBtn">&larr; Back</button>
+    <div class="collection-title">Leaderboard</div>
+    <div class="collection-count" id="leaderboardPlayerName"></div>
+  </div>
+  <div class="collection-scroll">
+    <div style="max-width:480px;margin:0 auto;">
+      <div class="btn-row" style="margin-bottom:1rem;" id="lbTabRow">
+        <button class="btn" id="lbTabPlus">New Run</button>
+        <button class="btn primary" id="lbTabNormal">New Puzzle</button>
+      </div>
+      <div id="leaderboardList" style="font-family:var(--font-mono); font-size:0.8rem; display:flex; flex-direction:column; gap:0.2rem;"></div>
+    </div>
+  </div>
+</div>
+
+<!-- NAME ENTRY — shown mandatorily on first-ever app launch, before the
+     tutorial or main menu, no way to cancel/dismiss/skip it (no close
+     button, no backdrop-tap handler wired for this overlay). Also reused
+     for the (now normally unreachable, but kept as a safety net) case of
+     opening the Leaderboard with somehow still no name saved. -->
+<div class="overlay" id="nameEntryOverlay">
+  <div class="overlay-title" style="font-size:clamp(1.6rem,6vw,2.4rem);">ENTER YOUR NAME</div>
+  <div class="overlay-sub">King Me tracks your progress on a global leaderboard. Enter a name to continue — this is required, and you'll only need to do it once.</div>
+  <input type="text" id="nameEntryInput" maxlength="20" placeholder="Your name" autocomplete="off"
+    style="font-family:var(--font-mono);font-size:1rem;letter-spacing:0.05em;text-align:center;background:rgba(13,13,13,0.7);border:1.5px solid var(--gold);color:var(--gold-light);padding:0.6rem 1rem;border-radius:4px;width:min(80vw,320px);"/>
+  <button class="overlay-btn" id="nameEntrySubmitBtn">Save</button>
+</div>
+
+<!-- ENLARGED CARD -->
+<div class="card-enlarge-overlay" id="cardEnlargeOverlay">
+  <div class="collection-rules-float" id="collectionRulesFloat"></div>
+  <!-- Tapping the dark backdrop already closes this (see the click listener
+       on cardEnlargeOverlay), but the stage can fill nearly the whole
+       screen on a narrow phone, leaving no obvious backdrop to tap — this
+       button is always visible regardless of stage size. -->
+  <button class="card-enlarge-close-btn" onclick="closeCardEnlarge()" aria-label="Close">&times;</button>
+  <div class="card-enlarge-stage" id="cardEnlargeStage"></div>
+</div>
+
+<!-- MASTERY ORB INFO POPUP — tapping any orb on any card (hand, Collection,
+     reward screen, wherever buildCardElement renders one) opens this small
+     popup showing that card's 3-tier upgrade path and, if affordable, a
+     button to actually spend Mastery Shards and fill the next orb. -->
+<div class="mastery-orb-overlay" id="masteryOrbOverlay">
+  <button class="mastery-orb-back-btn" onclick="closeMasteryOrbInfo()" aria-label="Back from card upgrades">&#8592; Back</button>
+  <div class="mastery-orb-popup" id="masteryOrbPopup"></div>
+</div>
+
+<!-- FIRST-TIME TUTORIAL PROMPT — lives here as a fixed-position, always-on-top
+     element (not inside #gameApp) so it stays visible across every screen the
+     tutorial walks through: the game board, the main menu, and the collection
+     screen. It used to live inside #gameApp in normal document flow, which
+     meant it vanished the moment the tutorial needed to show off anything
+     outside the board (the reward screen, the main menu's Collection button,
+     the collection screen itself) since #gameApp gets display:none whenever
+     another screen takes over. -->
+<div class="tutorial-banner" id="tutorialBanner">
+  <div class="tutorial-banner-text" id="tutorialBannerText"></div>
+  <button class="overlay-btn" id="tutorialNextBtn">Next</button>
+</div>
+
+<div class="app" id="gameApp">
+  <div id="cardPreview"><span class="preview-corner tl">✦</span><span class="preview-corner tr">✦</span></div>
+  <header>
+    <div class="title">KING ME</div>
+    <div class="level-badge">
+      <div class="level-label">Level</div>
+      <div class="level-number" id="levelNum">1</div>
+    </div>
+  </header>
+
+  <div class="status-bar">
+    <div class="status-item">
+      <div class="status-label">Your Pieces</div>
+      <div class="status-value yours" id="yourCount">3</div>
+    </div>
+    <div class="status-item">
+      <div class="status-label">Enemy</div>
+      <div class="status-value enemy" id="enemyCount">5</div>
+    </div>
+    <div class="status-item">
+      <div class="status-label">Board</div>
+      <div class="status-value cards" id="boardSizeDisplay">6×6</div>
+    </div>
+    <div class="status-item">
+      <div class="status-label">Cards</div>
+      <div class="status-value cards" id="cardCount">0</div>
+    </div>
+    <div class="status-item" id="plusMovesStatus" style="display:none;">
+      <div class="status-label">Moves</div>
+      <div class="status-value cards" id="plusMovesCount">0/0</div>
+    </div>
+    <div class="status-item" id="plusCardsStatus" style="display:none;">
+      <div class="status-label">Card Uses</div>
+      <div class="status-value cards" id="plusCardsCount">0/0</div>
+    </div>
+    <div class="status-item glory-status" id="gloryStatus">
+      <div class="status-label">Glory</div>
+      <div class="status-value" id="gloryValue">0</div>
+      <div class="glory-multiplier" id="gloryMultiplier">Ã—1.0</div>
+    </div>
+  </div>
+
+  <div class="board-wrap">
+    <div class="board-tilt">
+      <div class="board" id="board"></div>
+      <div class="board-frame-vignette"></div>
+    </div>
+  </div>
+
+  <div class="message" id="message"></div>
+
+  <div class="carousel-overlay" id="carouselOverlay">
+    <div class="carousel-overlay-backdrop"></div>
+    <div class="carousel-rules-float" id="carouselRulesFloat"></div>
+    <div class="carousel-overlay-stage" id="carouselOverlayStage"></div>
+  </div>
+
+  <div class="cards-section">
+    <div class="cards-hand" id="cardsHand">
+      <div class="stack-wrap">
+        <div class="rarity-stack" id="stackCommon" data-rarity="common">
+          <div class="stack-cards" id="stackCommonCards"></div>
+        </div>
+        <div class="stack-label">Common</div>
+        <div class="stack-pos" id="stackCommonPos"></div>
+      </div>
+      <div class="stack-wrap">
+        <div class="rarity-stack" id="stackUncommon" data-rarity="uncommon">
+          <div class="stack-cards" id="stackUncommonCards"></div>
+        </div>
+        <div class="stack-label">Uncommon</div>
+        <div class="stack-pos" id="stackUncommonPos"></div>
+      </div>
+      <div class="stack-wrap">
+        <div class="rarity-stack" id="stackRare" data-rarity="rare">
+          <div class="stack-cards" id="stackRareCards"></div>
+        </div>
+        <div class="stack-label">Rare</div>
+        <div class="stack-pos" id="stackRarePos"></div>
+      </div>
+      <div class="stack-wrap">
+        <div class="rarity-stack" id="stackEpic" data-rarity="epic">
+          <div class="stack-cards" id="stackEpicCards"></div>
+        </div>
+        <div class="stack-label">Epic</div>
+        <div class="stack-pos" id="stackEpicPos"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="btn-row">
+    <button class="btn primary" id="endTurnBtn" style="display:none;" onclick="endPlayerTurn()">End Turn</button>
+    <button class="btn primary" onclick="returnToMenu()">Menu</button>
+    <!-- Escape hatch for the rare soft-locked board (e.g. the only reachable
+         enemy left is stranded on a square nothing in hand can reach) —
+         ends the run and scores it exactly like a normal loss would. -->
+    <button class="btn" onclick="forfeitRun()">Forfeit</button>
+  </div>
+</div>
+
+<!-- GAME-OWNED MESSAGE / CONFIRMATION DIALOG -->
+<div class="overlay" id="gameDialogOverlay" role="dialog" aria-modal="true" aria-labelledby="gameDialogTitle" aria-describedby="gameDialogMessage">
+  <div class="overlay-title" id="gameDialogTitle">NOTICE</div>
+  <div class="overlay-sub" id="gameDialogMessage"></div>
+  <div class="game-dialog-actions">
+    <button class="overlay-btn menu-btn-secondary" id="gameDialogCancelBtn" type="button" onclick="dismissGameDialog()" style="display:none;">Cancel</button>
+    <button class="overlay-btn" id="gameDialogConfirmBtn" type="button" onclick="acceptGameDialog()">OK</button>
+  </div>
+</div>
+
+<!-- WIN OVERLAY -->
+<div class="overlay" id="winOverlay">
+  <div class="overlay-title win" id="winTitle">CLEARED</div>
+  <div class="overlay-sub" id="winSub">All enemy pieces captured.<br>Choose a card to add to your collection.</div>
+  <div class="glory-summary" id="gloryWinSummary" style="display:none"></div>
+  <div id="cardChoices" style="display:flex;gap:1rem;flex-wrap:nowrap;justify-content:flex-start;margin:0 auto;padding:0.5rem;overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%;"></div>
+  <button class="overlay-btn" onclick="nextLevel()" id="continueBtn" style="display:none">Continue to Level <span id="nextLevelNum">2</span></button>
+</div>
+
+<!-- LOSE OVERLAY -->
+<div class="overlay" id="loseOverlay">
+  <div class="overlay-title lose" id="loseTitle">RUN OVER</div>
+  <div class="overlay-sub" id="loseSub">Your run has ended.</div>
+  <div style="font-family:'Bebas Neue',sans-serif;font-size:1.5rem;color:var(--gray-light);letter-spacing:0.1em;" id="finalLevel">You reached Level 1</div>
+  <div class="glory-summary" id="gloryLoseSummary" style="display:none"></div>
+  <div style="font-family:var(--font-mono);font-size:0.8rem;color:var(--gold);letter-spacing:0.05em;min-height:1.4em;text-align:center;padding:0 1rem;" id="leaderboardRankMsg"></div>
+  <button class="overlay-btn" onclick="returnToMenu()">Menu</button>
+</div>
+
+<!-- LEVEL SELECT OVERLAY -->
+<div class="overlay" id="levelSelectOverlay" style="z-index:6000;">
+  <div class="overlay-title" style="font-size:2rem;letter-spacing:0.1em;" id="levelSelectTitle">NEW RUN</div>
+  <div class="overlay-sub" style="margin-bottom:1.2rem;">Choose your starting level.</div>
+  <button class="overlay-btn" id="levelSelectL1"  style="margin-bottom:0.6rem;">Level 1</button>
+  <button class="overlay-btn" id="levelSelectL10" style="margin-bottom:0.6rem;display:none;">Level 10</button>
+  <button class="overlay-btn" id="levelSelectL20" style="margin-bottom:1rem;display:none;">Level 20</button>
+  <button class="overlay-btn menu-btn-secondary" id="levelSelectSfxToggle" style="margin-bottom:1rem;">Sound Effects: On</button>
+  <button class="overlay-btn menu-btn-secondary"  id="levelSelectCancel">Cancel</button>
+</div>
+
+<!-- STALEMATE OVERLAY -->
+<div class="overlay" id="stalemateOverlay">
+  <div class="overlay-title" style="color:var(--gray-light);font-size:2.2rem;letter-spacing:0.12em;">STALEMATE?</div>
+  <div class="overlay-sub" id="stalemateSub" style="margin-bottom:1.4rem;">5 moves without a capture. Keep going or start fresh?</div>
+  <div style="font-family:var(--font-mono);font-size:0.72rem;color:var(--gray-light);margin-bottom:1.2rem;text-align:center;">At 15 moves the level restarts automatically.</div>
+  <button class="overlay-btn" onclick="dismissStalemate()" style="margin-bottom:0.7rem;">Keep Playing</button>
+  <button class="overlay-btn" onclick="restartLevelFresh()" style="background:rgba(60,20,20,0.85);border-color:rgba(180,60,60,0.6);color:#e8c8c8;">Restart Level (Randomised)</button>
+</div>
+
+<script src="bootstrap-and-media-1.js"></script>
+<script src="media-2.js"></script>
+<script src="media-3.js"></script>
+<script src="game.js"></script>
+</body>
+</html>
