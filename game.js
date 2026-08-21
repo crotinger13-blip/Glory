@@ -6866,6 +6866,10 @@ function openCardEnlarge(cardId) {
     : def.rarity === 'uncommon' ? '#2d6a2d'
     : '#c8922a';
   stage.innerHTML = buildBigCardHTML(cardId, locked);
+  if (tutorial.active && tutorial.upgradeCardId === cardId) {
+    const tutorialOrb = stage.querySelector('.mastery-orb:not(.filled)') || stage.querySelector('.mastery-orb');
+    if (tutorialOrb) tutorialOrb.id = 'tutorialUpgradeOrb';
+  }
   const rulesFloat = document.getElementById('collectionRulesFloat');
   if (rulesFloat) rulesFloat.innerHTML = buildFloatingCardRulesHTML(cardId);
   document.getElementById('cardEnlargeOverlay').classList.add('active');
@@ -7092,33 +7096,24 @@ function renderCollectionScreen() {
     const unlocked = col.unlockedCards.includes(cardId);
     const fakeGroup = { id: cardId, cards: [{ id: cardId, used: false, uid: -1 }] };
     const { el } = buildCardElement(fakeGroup);
-    el.addEventListener('click', () => openCardEnlarge(cardId));
+    el.addEventListener('click', () => {
+      openCardEnlarge(cardId);
+      if (tutorial.active && tutorial.step === 15 && tutorial.upgradeCardId === cardId) {
+        advanceTutorial(16);
+      }
+    });
     el.setAttribute('aria-label', CARD_DEFS[cardId].name + (unlocked ? '' : ' — Locked'));
 
     const wrap = document.createElement('div');
     const rarity = CARD_DEFS[cardId].rarity || 'common';
     wrap.className = `collection-card-wrap collection-rarity-${rarity}` + (unlocked ? '' : ' collection-locked');
     wrap.dataset.rarityLabel = getRarityDisplayName(rarity);
+    wrap.dataset.cardId = cardId;
+    if (tutorial.active && tutorial.upgradeCardId === cardId) wrap.id = 'tutorialUpgradeCard';
     wrap.appendChild(el);
 
-    const addBtn = document.createElement('button');
-    addBtn.className = 'collection-add-btn' + (unlocked ? '' : ' collection-locked-btn');
-    if (unlocked) {
-      addBtn.textContent = '+ Add to Deck';
-      addBtn.addEventListener('click', event => {
-        event.stopPropagation();
-        addCardToDeck(cardId);
-      });
-    } else {
-      addBtn.textContent = 'Locked';
-      addBtn.disabled = true;
-      addBtn.setAttribute('aria-disabled', 'true');
-    }
-    wrap.appendChild(addBtn);
     grid.appendChild(wrap);
   });
-
-  renderStarterDeckSection();
 }
 
 // ── FIRST-TIME TUTORIAL ──
@@ -7142,11 +7137,15 @@ const TUTORIAL_STEPS = [
   /* 8  */ { text: 'I think you have a card for this. Click on a stack of cards and use one to destroy the King!', highlightEl: 'stackUncommon' },
   /* 9  */ { text: 'Click the piece you would like to launch into the enemy.', highlightCells: [{ row: 2, col: 3 }] },
   /* 10 */ { text: 'Now take out the King!', highlightCells: [{ row: 5, col: 4 }] },
-  /* 11 */ { text: "Every 3 levels you'll earn a reward. Whatever you choose joins your permanent collection, ready for every run from now on. Pick a card, then hit Continue.", showNext: false },
+  /* 11 */ { text: "Every run begins with one free Common pack. Tap it to tear it open, reveal a random card, then hit Continue.", showNext: false },
   /* 12 */ { text: "Tap Card Collection to browse every card in the game.", highlightEl: 'menuCollectionBtn', showNext: false },
-  /* 13 */ { text: "Black cards are Common, green cards are Uncommon, and blue cards are Rare. Unlocked cards can join your Starter Deck; hollow cards are locked, but you can still tap them to study their abilities.", showNext: true },
-  /* 14 */ { text: "Every 10 levels you unlock a new Starter Deck slot. Fill it with a card and it'll join your hand at the very start of every run — up to 6 cards total.", highlightEl: 'starterSlot0', showNext: true },
-  /* 15 */ { text: "Spend Glory Points to upgrade cards: Common upgrades cost 800, Uncommon cost 1,500, and Rare cost 5,000. Collect cards, become a King, and fight your way to the top of the leaderboard!", showNext: true },
+  /* 13 */ { text: "Black cards are Common, green cards are Uncommon, blue cards are Rare, and pale cards are Bonus. Hollow cards are locked, but you can still tap them to study their abilities.", showNext: true },
+  /* 14 */ { text: "Every 3 levels you can open a card pack. Use them to help advance and earn more Glory Points.", showNext: true },
+  /* 15 */ { text: "Cards grow stronger through permanent upgrade orbs. Common orbs cost 5,000 Glory, Uncommon cost 10,000, and Rare cost 25,000. Tap the glowing card to learn how upgrades work.", highlightEl: 'tutorialUpgradeCard', showNext: false },
+  /* 16 */ { text: "The hollow circles at the bottom are upgrade orbs. Tap the glowing orb to inspect this card's Base effect and every upgrade ability.", highlightEl: 'tutorialUpgradeOrb', showNext: false },
+  /* 17 */ { text: "The panel shows the Base ability and what every orb adds. Filled orbs are upgrades you permanently own. Review the abilities above, then tap Next.", showNext: true },
+  /* 18 */ { text: "Your first upgrade is free during the tutorial. Tap the glowing Upgrade button now.", highlightEl: 'tutorialFreeUpgradeBtn', showNext: false },
+  /* 19 */ { text: "The first orb is now filled, and that upgraded ability is permanently unlocked. Earn Glory, upgrade your collection, become a King, and fight for the top of the leaderboard!", showNext: true },
 ];
 
 function startTutorial() {
@@ -7233,14 +7232,6 @@ function showTutorialStep(step) {
     // Non-interactive: demonstrate a king's long diagonal slide, then
     // auto-continue — no tap/click is expected from the player for this step.
     setTimeout(() => playTutorialKingDemo(8), 900);
-  } else if (step === 14) {
-    // The Starter Deck section sits below the fold on most screens — scroll
-    // the highlighted first slot into view instead of counting on the player
-    // to notice it and scroll down on their own.
-    setTimeout(() => {
-      const el = document.getElementById('starterSlot0');
-      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }, 50);
   }
 }
 
@@ -7306,7 +7297,12 @@ function tutorialNextClicked() {
   else if (tutorial.step === 6) advanceTutorial(7);
   else if (tutorial.step === 13) advanceTutorial(14);
   else if (tutorial.step === 14) advanceTutorial(15);
-  else if (tutorial.step === 15) finishTutorial();
+  else if (tutorial.step === 17) {
+    advanceTutorial(18);
+    openMasteryOrbInfo(tutorial.upgradeCardId);
+    applyTutorialElementHighlight('tutorialFreeUpgradeBtn');
+  }
+  else if (tutorial.step === 19) finishTutorial();
 }
 
 function finishTutorial() {
@@ -7320,6 +7316,9 @@ function finishTutorial() {
   // The last few steps walk through the Collection screen, which is still
   // open at this point — close it before returning to the main menu.
   document.getElementById('collectionScreen').classList.remove('active');
+  document.getElementById('cardEnlargeOverlay').classList.remove('active');
+  document.getElementById('masteryOrbOverlay').classList.remove('active');
+  tutorial.upgradeCardId = null;
   showMainMenu();
 }
 
@@ -7335,6 +7334,103 @@ function tutorialAllowsCellClick(row, col) {
     case 10: return (row === 5 && col === 4);
     default: return false;
   }
+}
+
+// The tutorial is a genuinely guided sequence: while it is active, the only
+// control that can receive an input is the one named by the current prompt.
+// Individual gameplay functions already reject many out-of-order actions, but
+// that was not enough on menu screens — New Run, New Puzzle, Leaderboard, Back,
+// and other unrelated buttons could still navigate away and bypass the rest of
+// the walkthrough. This single capture-phase whitelist covers every screen and
+// every input method before those controls' own handlers can run.
+function tutorialAllowsUiTarget(target) {
+  if (!tutorial.active) return true;
+  if (!(target instanceof Element)) return false;
+
+  // The mandatory first-launch name gate appears before the tutorial can
+  // begin. Keep its input and Save button usable even though tutorial state
+  // has already been prepared in the background.
+  if (target.closest('#nameEntryOverlay.active')) return true;
+
+  switch (tutorial.step) {
+    // Explanatory steps advance only through the tutorial's own Next button.
+    case 0:
+    case 4:
+    case 6:
+    case 13:
+    case 14:
+    case 17:
+    case 19:
+      return !!target.closest('#tutorialNextBtn');
+
+    // Board movement/capture steps use the same exact square whitelist as
+    // cellClick(), including taps directly on a piece image inside the cell.
+    case 1:
+    case 3:
+    case 9:
+    case 10: {
+      const cell = target.closest('#board .cell');
+      if (!cell) return false;
+      return tutorialAllowsCellClick(Number(cell.dataset.row), Number(cell.dataset.col));
+    }
+
+    case 2:
+    case 5:
+      return !!target.closest('#endTurnBtn');
+
+    // The king demonstration is automatic; player input is intentionally off.
+    case 7:
+      return false;
+
+    // Let the requested Uncommon stack open, then allow interaction only with
+    // its carousel stage so the player can inspect and activate Catapult.
+    case 8:
+      return !!target.closest('#stackUncommon, #carouselOverlayStage');
+
+    // The free pack and its Continue button are the only two actions on the
+    // reward screen that this tutorial step asks the player to perform.
+    case 11:
+      return !!target.closest('#cardPackStage .glory-pack, #continueBtn');
+
+    // On the main menu, Card Collection is the sole legal destination.
+    case 12:
+      return !!target.closest('#menuCollectionBtn');
+
+    // Collection mastery walkthrough: one card, then one orb, then the free
+    // upgrade button. Every surrounding card/control remains locked.
+    case 15:
+      return !!target.closest('#tutorialUpgradeCard') && !target.closest('.mastery-orb');
+    case 16:
+      return !!target.closest('#tutorialUpgradeOrb');
+    case 18:
+      return !!target.closest('#tutorialFreeUpgradeBtn');
+
+    default:
+      return false;
+  }
+}
+
+function blockOutOfOrderTutorialInput(event) {
+  if (!tutorial.active || tutorialAllowsUiTarget(event.target)) return;
+  if (event.cancelable) event.preventDefault();
+  event.stopImmediatePropagation();
+}
+
+function initTutorialInputLock() {
+  // pointerdown stops mouse, pen, and modern touch input before a control can
+  // react; click also catches keyboard-generated and scripted button clicks.
+  document.addEventListener('pointerdown', blockOutOfOrderTutorialInput, true);
+  document.addEventListener('click', blockOutOfOrderTutorialInput, true);
+  // Older Android WebViews may not emit Pointer Events.
+  document.addEventListener('touchstart', blockOutOfOrderTutorialInput, { capture: true, passive: false });
+  document.addEventListener('keydown', (event) => {
+    if (!tutorial.active) return;
+    if ((event.key === 'Enter' || event.key === ' ' || event.key === 'Escape') &&
+        !tutorialAllowsUiTarget(event.target)) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }
+  }, true);
 }
 
 function moveTutorialPiece(fr, fc, tr, tc) {
@@ -7536,6 +7632,7 @@ function startRunAtLevel(mode, startLevel) { doStartRun(mode, startLevel); }
 function refreshCheckpointButtons() { /* no-op — level select is a popup now */ }
 
 function initMenuUI() {
+  initTutorialInputLock();
   // New Puzzle is now a fully standalone sub-game reached through its own
   // hub screen (mirroring the main menu), instead of jumping straight to
   // the level-select overlay.

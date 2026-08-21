@@ -64,10 +64,10 @@
       <div class="stats-grid" id="statsGrid"></div>
     </div>
     <div class="collection-grid" id="collectionGrid"></div>
-    <div class="starter-deck-section">
-      <div class="starter-deck-title">Starter Deck</div>
-      <div class="starter-deck-grid" id="starterDeckGrid"></div>
-    </div>
+    <!-- Glory Edition has no permanent Starter Deck. This hidden mount is
+         retained only so old saves and shared collection rendering remain
+         harmlessly backward-compatible. -->
+    <div class="starter-deck-grid" id="starterDeckGrid" style="display:none"></div>
   </div>
 </div>
 
@@ -250,6 +250,7 @@
   <div class="overlay-title win" id="winTitle">CLEARED</div>
   <div class="overlay-sub" id="winSub">All enemy pieces captured.<br>Choose a card to add to your collection.</div>
   <div class="glory-summary" id="gloryWinSummary" style="display:none"></div>
+  <div class="card-pack-stage" id="cardPackStage" style="display:none"></div>
   <div id="cardChoices" style="display:flex;gap:1rem;flex-wrap:nowrap;justify-content:flex-start;margin:0 auto;padding:0.5rem;overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%;"></div>
   <button class="overlay-btn" onclick="nextLevel()" id="continueBtn" style="display:none">Continue to Level <span id="nextLevelNum">2</span></button>
 </div>
@@ -287,6 +288,8 @@
 <script src="bootstrap-and-media-1.js"></script>
 <script src="media-2.js"></script>
 <script src="media-3.js"></script>
+<script src="media-4.js"></script>
+<script src="media-5.js"></script>
 <script src="game.js"></script>
 </body>
 </html>
