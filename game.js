@@ -5120,25 +5120,28 @@ function buildCardElement(group, opts) {
     if (isActive) el.style.boxShadow = `0 8px 24px rgba(0,0,0,0.9), 0 0 0 2px ${activeBorder}`;
 
     // Stack badge if more than 1
-    const stackBadge = totalCount > 1
+    const stackBadge = availCount > 1
       ? `<div style="
           position:absolute;
-          top:-10px;right:-10px;
-          width:22px;height:22px;
+          top:6px;right:6px;
+          min-width:24px;height:24px;
+          padding:0 5px;
+          box-sizing:border-box;
           border-radius:50%;
-          background:${isUncommon ? '#1a3320' : '#5a3a08'};
-          border:2px solid ${isUncommon ? '#4a8f4a' : '#e8b84b'};
+          background:rgba(12,10,7,0.94);
+          border:2px solid ${borderColor};
           font-family:var(--font-card-name);
-          font-size:0.75rem;
+          font-size:0.8rem;
           font-weight:700;
-          color:${isUncommon ? '#5fa05f' : '#e8b84b'};
+          color:#fff6d5;
           display:flex;
           align-items:center;
           justify-content:center;
-          z-index:10;
+          z-index:30;
           line-height:1;
           box-shadow:0 2px 6px rgba(0,0,0,0.8);
           opacity:${allUsed ? 0.3 : 1};
+          pointer-events:none;
         ">${availCount}</div>`
       : '';
 
@@ -5708,6 +5711,13 @@ function buildCardElement(group, opts) {
       <div class="card-inner">
         ${cardInnerHTML}
       </div>`;
+    // One authoritative card face everywhere. The enlarged Collection view
+    // is the canonical design; hand groups, reward choices, Collection cards,
+    // Starter Deck cards, and the carousel all render this exact same markup.
+    // Keep the live-copy badge outside that shared face so it remains visible
+    // without creating a second visual variation of the card itself.
+    el.innerHTML = `${stackBadge}${buildBigCardHTML(group.id)}`;
+    el.dataset.availableCopies = String(availCount);
   // Card titles must never wrap to a second line (that's what stranded a
   // lone "S" under "REINFORCEMENT" for the Reinforcements card) — shrink the
   // name's font-size just enough to fit on one line instead. This has to
@@ -5815,7 +5825,9 @@ function render(options = {}) {
       if (liveEnemy < state.lastEnemyCount) {
         const captured = state.lastEnemyCount - liveEnemy;
         activeStatsObj().piecesCaptured += captured;
-        awardMasteryShards(captured * 100); // every defeated enemy adds 100 permanent Glory Points
+        // Captures add to the in-run Glory score through syncGloryScore().
+        // The complete remaining run total is banked once in triggerLose();
+        // crediting captures here as well would count those points twice.
         statsChanged = true;
       }
       if (liveYours < state.lastYoursCount) {
@@ -6508,10 +6520,6 @@ function openCarouselOverlay(rarity) {
   stage.classList.remove('full-card-view');
   groups.forEach((group, i) => {
     const { el } = buildCardElement(group);
-    // Use the collection's complete card face in the carousel too. This keeps
-    // artwork, title, description, rarity treatment, and mastery orbs identical
-    // in every card view instead of stretching the old compact hand card.
-    el.innerHTML = buildBigCardHTML(group.id);
     el.dataset.groupId = group.id;
     el.dataset.idx = String(i);
     el.classList.add('carousel-card-face', 'carousel-full-card');
@@ -7140,8 +7148,8 @@ const TUTORIAL_STEPS = [
   /* 11 */ { text: "Every run begins with one free Common pack. Tap it to tear it open, reveal a random card, then hit Continue.", showNext: false },
   /* 12 */ { text: "Tap Card Collection to browse every card in the game.", highlightEl: 'menuCollectionBtn', showNext: false },
   /* 13 */ { text: "Black cards are Common, green cards are Uncommon, blue cards are Rare, and pale cards are Bonus. Hollow cards are locked, but you can still tap them to study their abilities.", showNext: true },
-  /* 14 */ { text: "Every 3 levels you can open a card pack. Use them to help advance and earn more Glory Points.", showNext: true },
-  /* 15 */ { text: "Cards grow stronger through permanent upgrade orbs. Common orbs cost 5,000 Glory, Uncommon cost 10,000, and Rare cost 25,000. Tap the glowing card to learn how upgrades work.", highlightEl: 'tutorialUpgradeCard', showNext: false },
+  /* 14 */ { text: "Every 2 levels you can open a card pack. Use them to help advance and earn more Glory Points.", showNext: true },
+  /* 15 */ { text: "Cards grow stronger through permanent upgrade orbs. Common orbs cost 2,500 Glory, Uncommon cost 5,000, and Rare cost 10,000. Tap the glowing card to learn how upgrades work.", highlightEl: 'tutorialUpgradeCard', showNext: false },
   /* 16 */ { text: "The hollow circles at the bottom are upgrade orbs. Tap the glowing orb to inspect this card's Base effect and every upgrade ability.", highlightEl: 'tutorialUpgradeOrb', showNext: false },
   /* 17 */ { text: "The panel shows the Base ability and what every orb adds. Filled orbs are upgrades you permanently own. Review the abilities above, then tap Next.", showNext: true },
   /* 18 */ { text: "Your first upgrade is free during the tutorial. Tap the glowing Upgrade button now.", highlightEl: 'tutorialFreeUpgradeBtn', showNext: false },
@@ -7730,6 +7738,64 @@ function continueBootAfterNameEntry() {
   }
 }
 
+// Read the background URL chosen by the portrait/landscape media query and
+// decode that exact image before revealing the menu. CSS backgrounds do not
+// expose their own load event, so this mirrors the selected resource through
+// an Image object without maintaining a second hardcoded asset choice.
+function getSelectedMenuBackgroundUrl() {
+  const background = document.querySelector('#mainMenu .main-menu-bg');
+  if (!background) return '';
+  const value = getComputedStyle(background).backgroundImage || '';
+  const urls = [...value.matchAll(/url\((['"]?)(.*?)\1\)/g)];
+  return urls.length ? urls[urls.length - 1][2] : '';
+}
+
+function decodeInitialMenuBackground() {
+  const url = getSelectedMenuBackgroundUrl();
+  if (!url) return Promise.resolve();
+  const image = new Image();
+  image.decoding = 'async';
+  image.src = url;
+  if (typeof image.decode === 'function') return image.decode().catch(() => {});
+  return new Promise(resolve => {
+    image.onload = resolve;
+    image.onerror = resolve;
+  });
+}
+
+async function prepareInitialMenuVisuals() {
+  const tasks = [decodeInitialMenuBackground()];
+  if (document.fonts && typeof document.fonts.load === 'function') {
+    tasks.push(
+      document.fonts.load('700 48px "Cinzel Decorative"'),
+      document.fonts.load('900 16px "Inter"'),
+      document.fonts.load('700 16px "Cinzel"')
+    );
+  }
+  // A failed remote font must never strand an offline installation here.
+  await Promise.race([
+    Promise.allSettled(tasks),
+    new Promise(resolve => setTimeout(resolve, 6000))
+  ]);
+}
+
+function dismissBootSplash() {
+  const splash = document.getElementById('bootSplash');
+  if (!splash) return;
+  // Let the completed screen paint underneath before fading the cover away.
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    splash.classList.add('boot-splash-hidden');
+    setTimeout(() => splash.remove(), 260);
+  }));
+}
+
+async function startInitialBoot() {
+  await prepareInitialMenuVisuals();
+  if (!getPlayerName()) openFirstRunNameEntryModal();
+  else continueBootAfterNameEntry();
+  dismissBootSplash();
+}
+
 // One delegated click listener for the whole board, set up once at boot,
 // instead of render() attaching a fresh `cell.addEventListener('click', ...)`
 // closure to every single cell on every single render. #board itself is a
@@ -7774,8 +7840,4 @@ initMenuUI();
 // Mandatory first-launch gate: no name saved yet means nothing else — not
 // the tutorial, not the main menu, nothing — is shown until one is entered.
 // There is no cancel/skip control on this overlay.
-if (!getPlayerName()) {
-  openFirstRunNameEntryModal();
-} else {
-  continueBootAfterNameEntry();
-}
+void startInitialBoot();

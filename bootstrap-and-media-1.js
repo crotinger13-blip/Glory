@@ -129,36 +129,45 @@ function playPieceLandSound() {
     if (!AudioContextClass || SFX_VOLUME <= 0) return;
     pieceMoveAudioContext = pieceMoveAudioContext || new AudioContextClass();
     const ctx = pieceMoveAudioContext;
-    if (ctx.state === 'suspended') ctx.resume().catch(() => {});
-
-    // A short, low wooden contact sound made only from filtered noise. The
-    // former sample contained a light pitched chirp after the piece landed;
-    // avoiding oscillators (and the old sample) leaves only the checker move.
-    if (!pieceMoveNoiseBuffer || pieceMoveNoiseBuffer.sampleRate !== ctx.sampleRate) {
-      const length = Math.max(1, Math.floor(ctx.sampleRate * .105));
-      pieceMoveNoiseBuffer = ctx.createBuffer(1, length, ctx.sampleRate);
-      const data = pieceMoveNoiseBuffer.getChannelData(0);
-      let smoothed = 0;
-      for (let i = 0; i < length; i++) {
-        smoothed = smoothed * .78 + (Math.random() * 2 - 1) * .22;
-        data[i] = smoothed * Math.pow(1 - i / length, 2.4);
+    const playUnlocked = () => {
+      // A short, low wooden contact sound made only from filtered noise. The
+      // former sample contained a light pitched chirp after the piece landed;
+      // avoiding oscillators (and the old sample) leaves only the checker move.
+      if (!pieceMoveNoiseBuffer || pieceMoveNoiseBuffer.sampleRate !== ctx.sampleRate) {
+        const length = Math.max(1, Math.floor(ctx.sampleRate * .105));
+        pieceMoveNoiseBuffer = ctx.createBuffer(1, length, ctx.sampleRate);
+        const data = pieceMoveNoiseBuffer.getChannelData(0);
+        let smoothed = 0;
+        for (let i = 0; i < length; i++) {
+          smoothed = smoothed * .78 + (Math.random() * 2 - 1) * .22;
+          data[i] = smoothed * Math.pow(1 - i / length, 2.4);
+        }
       }
+      const source = ctx.createBufferSource();
+      const filter = ctx.createBiquadFilter();
+      const gain = ctx.createGain();
+      source.buffer = pieceMoveNoiseBuffer;
+      filter.type = 'lowpass';
+      filter.frequency.value = 720;
+      filter.Q.value = .45;
+      const now = ctx.currentTime;
+      gain.gain.setValueAtTime(Math.max(.0001, SFX_VOLUME * .28), now);
+      gain.gain.exponentialRampToValueAtTime(.0001, now + .105);
+      source.connect(filter);
+      filter.connect(gain);
+      gain.connect(ctx.destination);
+      source.start(now);
+      source.stop(now + .11);
+    };
+
+    // Android WebView commonly begins with a suspended AudioContext. Starting
+    // the source before resume() finishes silently drops the movement sound,
+    // so wait for the context to be live before scheduling it.
+    if (ctx.state === 'suspended') {
+      ctx.resume().then(playUnlocked).catch(() => {});
+    } else {
+      playUnlocked();
     }
-    const source = ctx.createBufferSource();
-    const filter = ctx.createBiquadFilter();
-    const gain = ctx.createGain();
-    source.buffer = pieceMoveNoiseBuffer;
-    filter.type = 'lowpass';
-    filter.frequency.value = 720;
-    filter.Q.value = .45;
-    const now = ctx.currentTime;
-    gain.gain.setValueAtTime(Math.max(.0001, SFX_VOLUME * .28), now);
-    gain.gain.exponentialRampToValueAtTime(.0001, now + .105);
-    source.connect(filter);
-    filter.connect(gain);
-    gain.connect(ctx.destination);
-    source.start(now);
-    source.stop(now + .11);
   } catch (err) {
     // Never let a sound-effect failure interrupt the actual game logic.
   }
@@ -722,7 +731,7 @@ function resolveMasteryMode() {
 // with mastered cards, just not functional until it gets its own tuning
 // pass.
 const MASTERY_MAX_LEVEL = 3;
-const MASTERY_COST_BASE = { common: 5000, uncommon: 10000, rare: 25000, white: 100 };
+const MASTERY_COST_BASE = { common: 2500, uncommon: 5000, rare: 10000, white: 100 };
 
 function masteryUpgradeCost(cardId, targetLevel) {
   const def = CARD_DEFS[cardId];
@@ -1198,8 +1207,8 @@ const CARD_MASTERY_TIERS = {
     'Move the chosen unit backwards even after it has moved.',
   ],
   double_jump: [
-    'Leap 3 squares',
-    'Leap 4 squares',
+    'Jump up to 3 enemy units',
+    'Jump up to 4 enemy units',
   ],
   t_strike: [
     'Strike 5 spaces in every direction',
@@ -1325,7 +1334,7 @@ const CARD_BASE_EFFECTS = {
   side_step: 'Move 1 space in any direction.',
   bodyguard: 'Trade places using 1 unmoved friendly unit.',
   retreat: 'Move 1 unmoved friendly unit backwards.',
-  double_jump: 'Leap up to 2 diagonal squares.',
+  double_jump: 'Jump up to 2 enemy units.',
   t_strike: 'Strike 3 spaces by row and column.',
   cross_strike: 'Strike 3 spaces on both diagonals.',
   chariot_charge: 'Charge up to 3 spaces.',
@@ -1567,14 +1576,13 @@ function getConscriptKingFlags(mode) {
   return CONSCRIPT_KING_FLAGS_BY_LEVEL[level].slice();
 }
 
-// War Horse ("double_jump")'s max leap distance, driven by its mastery
-// level — base (unupgraded) only leaps 2 squares (over a single square);
-// each of its 2 tiers extends the max leap by one more square, up to 4 at
-// full mastery.
-const DOUBLE_JUMP_MAX_LEAP_BY_LEVEL = [2, 3, 4];
-function getDoubleJumpMaxLeap(mode) {
+// War Horse ("double_jump") is limited by how many enemy units it can jump,
+// not by the destination's raw distance. Base captures up to 2 units in one
+// diagonal leap; its two mastery tiers raise that limit to 3 and then 4.
+const DOUBLE_JUMP_MAX_CAPTURES_BY_LEVEL = [2, 3, 4];
+function getDoubleJumpMaxCaptures(mode) {
   const level = getCardMasteryLevel('double_jump', mode);
-  return DOUBLE_JUMP_MAX_LEAP_BY_LEVEL[level];
+  return DOUBLE_JUMP_MAX_CAPTURES_BY_LEVEL[level];
 }
 
 // Ballista Fire ("t_strike") gets the exact same progression as Infantry
@@ -2943,6 +2951,9 @@ function ensureGloryState() {
   if (!Array.isArray(state.gloryPendingSkillCaptureIds)) state.gloryPendingSkillCaptureIds = [];
   if (typeof state.gloryTargetReached !== 'boolean') state.gloryTargetReached = false;
   if (typeof state.gloryLevelFinalized !== 'boolean') state.gloryLevelFinalized = false;
+  if (typeof state.gloryBankedAtRunEnd !== 'boolean') state.gloryBankedAtRunEnd = false;
+  if (!Number.isFinite(state.gloryBankedAmount)) state.gloryBankedAmount = 0;
+  if (typeof state.runEnded !== 'boolean') state.runEnded = false;
 }
 
 function collectGloryPieceSnapshot() {
@@ -3357,6 +3368,31 @@ function renderGlorySummary(targetId, levelCleared = false) {
     : `FINAL GLORY <strong>${state.glory.toLocaleString()}</strong> &nbsp;•&nbsp; LEVELS CLEARED <strong>${state.levelsCompleted || 0}</strong>`;
 }
 
+// A run's HUD Glory is spendable during the run and becomes permanent only
+// when that run truly ends. Keep this transaction idempotent: delayed enemy
+// callbacks, repeated loss checks, or reopening an overlay must never bank
+// the same run twice.
+function bankFinalRunGlory() {
+  ensureGloryState();
+  if (state.gloryBankedAtRunEnd) return state.gloryBankedAmount || 0;
+  const amount = Math.max(0, Math.round(state.glory || 0));
+  state.gloryBankedAtRunEnd = true;
+  state.gloryBankedAmount = amount;
+  if (amount > 0) awardMasteryShards(amount);
+  return amount;
+}
+
+// Ending a run is terminal. Cancel any pending save and remove the run slot
+// immediately so the main menu can never offer a stale Continue Run button.
+function permanentlyCloseRunSave() {
+  state.runEnded = true;
+  if (saveGameDebounceTimer) {
+    clearTimeout(saveGameDebounceTimer);
+    saveGameDebounceTimer = null;
+  }
+  clearSave(state.mode);
+}
+
 // ── CARD CHOICE POOL ──
 function getCardChoices() {
   return getWeightedCardChoices(3 + (state.rewardCardBonus || 0));
@@ -3386,6 +3422,7 @@ function saveGame() {
   // real in-progress run, or get offered back via "Continue Run" if the
   // player quits mid-tutorial.
   if (tutorial.active) return;
+  if (state?.runEnded) return;
   // `state` starts as `{}` at page load and ONLY gets populated by clicking
   // Continue Run (loadOrInitState) or New Run (initState) — loadOrInitState
   // is never called automatically on boot. So sitting on the main menu
@@ -3641,6 +3678,9 @@ function initState(mode, startLevel, sfxMuted) {
     levelsCompleted: effectiveStartLevel - 1,
     boardSize: 6,
     gameOver: false,
+    runEnded: false,
+    gloryBankedAtRunEnd: false,
+    gloryBankedAmount: 0,
     // Every real new run begins with a three-card choice before its first
     // board is generated. The tutorial remains scripted and skips this.
     openingRewardPending: CARTOON_SHOWCASE_BUILD ? false : !tutorial.active,
@@ -3755,12 +3795,8 @@ function initState(mode, startLevel, sfxMuted) {
   else setupLevel();
 }
 
-// Every 3 levels cleared lines up exactly with a reward screen (see
-// `earnCard = state.levelsCompleted % 3 === 0` in triggerWin/nextLevel) —
-// this gives the player a real, felt step up in challenge right as they
-// cash that reward in, on top of (not instead of) the existing smooth
-// per-level curves. Capped so it stays a meaningful nudge rather than a
-// wall — by level 100 this alone would otherwise pile up to +40%.
+// This small difficulty bump remains on its established three-level cadence;
+// card-pack rewards now arrive every two levels independently.
 function getRewardMilestoneBump() {
   const milestonesReached = Math.floor((state.level - 1) / 3);
   return Math.min(milestonesReached * 0.012, 0.12);
@@ -5262,9 +5298,10 @@ function getValidMoves(row, col) {
     return moves;
   }
 
-  // WAR HORSE — leap 2 up to maxLeap squares (mastery-scaled — base 2,
-  // each of its 2 orbs adds one more, up to 4 at full mastery) in any
-  // diagonal direction, regardless of what's actually along the way. Every
+  // WAR HORSE — jump up to 2/3/4 enemy units in one diagonal leap. The
+  // landing distance is one square beyond the mastery-scaled capture limit,
+  // so base can pass over 2 units, orb 1 can pass over 3, and orb 2 can pass
+  // over 4. Every
   // square in the path can be empty, an enemy (captured on landing), or a
   // Meteor Strike crater (impassable rubble that blocks a normal step, but
   // War Horse hops clean over it same
@@ -5272,18 +5309,18 @@ function getValidMoves(row, col) {
   // the path still blocks the jump (you can't hop your own piece), and
   // landing still can't be off the board, on a crater, or on an occupied
   // square. It's a real move in its own right now, not just a capture move —
-  // it works exactly the same whether there are 0, 1, 2, or 3 enemies along
+  // it works exactly the same whether there are empty spaces or enemies along
   // the way; whatever enemies ARE in the path still get captured on landing.
   if (ability === 'double_jump') {
     const moves = [];
-    const maxLeap = getDoubleJumpMaxLeap(state.mode);
+    const maxCaptures = getDoubleJumpMaxCaptures(state.mode);
+    const maxLeapDistance = maxCaptures + 1;
     const diagonals = [[-1,-1],[-1,1],[1,-1],[1,1]];
     diagonals.forEach(([dr, dc]) => {
-      // Try jumping a path of 1 up to (maxLeap - 1) squares (landing 2 up
-      // to maxLeap squares away, mastery-scaled — see
-      // getDoubleJumpMaxLeap/CARD_MASTERY_TIERS) in this diagonal
+      // Try every landing from 2 squares away through the square immediately
+      // beyond the maximum number of units this mastery tier can capture.
       // direction.
-      for (let count = 1; count <= maxLeap - 1; count++) {
+      for (let count = 1; count <= maxLeapDistance - 1; count++) {
         const over = []; // only the actual enemies along the path — empty squares/craters aren't captured
         let valid = true;
         for (let i = 1; i <= count; i++) {
@@ -5316,9 +5353,11 @@ function getValidMoves(row, col) {
         moves.push({
           row: landR, col: landC,
           type: 'double_capture',
+          captured: over.slice(),
           over:  over[0] || null,
           over2: over[1] || null,
-          over3: over[2] || null
+          over3: over[2] || null,
+          over4: over[3] || null
         });
       }
     });
@@ -8169,7 +8208,9 @@ function executeMove(fromRow, fromCol, move) {
   // this type (control flow never reaches it for a double_capture move,
   // since every double_capture is caught here first).
   if (move.type === 'double_capture') {
-    const jumped = [move.over, move.over2, move.over3].filter(Boolean);
+    const jumped = Array.isArray(move.captured)
+      ? move.captured
+      : [move.over, move.over2, move.over3, move.over4].filter(Boolean);
     const resolution = stageAnimatedUncommonMove('double_jump', fromRow, fromCol, move, piece);
     animateWarHorse(fromRow, fromCol, move.row, move.col, jumped, () => {
       finishUncommonAnimationResolution();
@@ -8237,9 +8278,10 @@ function executeMove(fromRow, fromCol, move) {
     // War Horse's generic (non-animated) fallback path — same null-guarding
     // as the animated branch above, since the path can now include empty
     // squares/craters with no enemy to capture there.
-    if (move.over) state.board[move.over.row][move.over.col].piece = null;
-    if (move.over2) state.board[move.over2.row][move.over2.col].piece = null;
-    if (move.over3) state.board[move.over3.row][move.over3.col].piece = null;
+    const jumped = Array.isArray(move.captured)
+      ? move.captured
+      : [move.over, move.over2, move.over3, move.over4].filter(Boolean);
+    jumped.forEach(cap => { state.board[cap.row][cap.col].piece = null; });
   } else if ((move.type === 't_capture' || move.type === 't_detonate') && move.captured) {
     move.captured.forEach(cap => {
       state.board[cap.row][cap.col].piece = null;
@@ -9035,7 +9077,7 @@ function triggerWin() {
   recordLevelBeaten(state.level, state.mode); // persists across runs, drives Starter Deck unlocks
   render();
 
-  const earnCard = state.levelsCompleted % 3 === 0; // one card every 3 levels cleared
+  const earnCard = state.levelsCompleted % 2 === 0; // one card-pack market every 2 levels cleared
 
   state.pendingRewardCardId = null;
   // Cleared unconditionally, not just inside the earnCard branch below — a
@@ -9056,7 +9098,7 @@ function triggerWin() {
     document.getElementById('continueBtn').style.display = 'inline-block';
     document.getElementById('nextLevelNum').textContent = state.level + 1;
   } else if (false) {
-    document.getElementById('winSub').textContent = `Level ${state.level} cleared! Every 3 levels earns a card — choose one.`;
+    document.getElementById('winSub').textContent = `Level ${state.level} cleared! Every 2 levels earns a card — choose one.`;
     let choices;
     try {
       choices = getCardChoices();
@@ -9066,7 +9108,7 @@ function triggerWin() {
     }
     renderRewardCardChoices(choices);
   } else {
-    const remaining = 3 - (state.levelsCompleted % 3);
+    const remaining = 2 - (state.levelsCompleted % 2);
     document.getElementById('winSub').textContent = `Level ${state.level} cleared! ${remaining} more level${remaining > 1 ? 's' : ''} until your next card.`;
     document.getElementById('continueBtn').style.display = 'inline-block';
     document.getElementById('nextLevelNum').textContent = state.level + 1;
@@ -9268,7 +9310,10 @@ function stageAnimatedUncommonMove(cardId, fromRow, fromCol, move, piece) {
   beginUncommonAnimationResolution();
   state.board[fromRow][fromCol].piece = null;
   if (cardId === 'double_jump') {
-    [move.over, move.over2, move.over3].filter(Boolean).forEach(cap => {
+    const jumped = Array.isArray(move.captured)
+      ? move.captured
+      : [move.over, move.over2, move.over3, move.over4].filter(Boolean);
+    jumped.forEach(cap => {
       state.board[cap.row][cap.col].piece = null;
     });
   } else {
@@ -9679,6 +9724,12 @@ function triggerLose(reason) {
   document.getElementById('stalemateOverlay').classList.remove('active');
   document.getElementById('levelSelectOverlay').classList.remove('active');
   state.gameOver = true;
+  // Bank the complete remaining run balance before anything navigates away,
+  // then destroy the resumable save. This is shared by ordinary defeat and
+  // a confirmed forfeit so both outcomes obey exactly the same rules.
+  syncGloryScore();
+  bankFinalRunGlory();
+  permanentlyCloseRunSave();
   // Loss and forfeit both funnel through here (see forfeitRun above) — this
   // is the one guaranteed place a run actually ends, so it's where the
   // run-duration sound-effects mute choice resets back to on, and where the
