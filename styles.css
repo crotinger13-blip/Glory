@@ -36,6 +36,38 @@
       text-transform: uppercase;
     }
 
+    /* Hide the unfinished menu while its large artwork and web fonts decode.
+       This first-paint view uses only system fonts and flat colors. */
+    .boot-splash {
+      position: fixed;
+      inset: 0;
+      z-index: 30000;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: .8rem;
+      color: #e8b84b;
+      background: #17130f;
+      opacity: 1;
+      transition: opacity .22s ease;
+    }
+    .boot-splash.boot-splash-hidden { opacity: 0; pointer-events: none; }
+    .boot-splash-title {
+      font-family: Georgia, 'Times New Roman', serif;
+      font-size: clamp(2rem, 9vw, 4rem);
+      font-weight: 700;
+      letter-spacing: .08em;
+      text-shadow: 0 3px 0 #5f1717;
+    }
+    .boot-splash-status {
+      font-family: Arial, sans-serif;
+      color: #e8dcc8;
+      font-size: .72rem;
+      font-weight: 700;
+      letter-spacing: .18em;
+    }
+
     /* CSS Grid (not flex) specifically so a phone in LANDSCAPE can rearrange
        into a two-column layout (board on one side, everything else stacked
        narrow on the other) purely by redefining grid-template-areas in the
@@ -3623,6 +3655,40 @@ header {
     margin-top: auto;
     flex-shrink: 0;
   }
+  /* The collection cards reserve explicit rows for the full square artwork,
+     title, three-line description, and upgrade orbs. */
+  .collection-grid .card {
+    aspect-ratio: 0.60;
+  }
+  .collection-grid .card .card-inner {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto minmax(2.05rem, 1fr) auto;
+    align-content: stretch;
+  }
+  .collection-grid .card .card-art,
+  .collection-grid .card .card-name,
+  .collection-grid .card .card-desc,
+  .collection-grid .card .mastery-orbs {
+    min-width: 0;
+    width: 100%;
+  }
+  .collection-grid .card .card-desc {
+    max-height: none;
+  }
+  /* Android's two-column phone layout has fewer usable CSS pixels than the
+     desktop collection even at the same nominal width. Give only that narrow
+     layout a genuinely portrait card and measured title/description rows, so
+     no card can push its copy or upgrade orbs through the bottom edge. */
+  @media (max-width: 560px) {
+    .collection-card-slot,
+    .collection-grid .card {
+      aspect-ratio: 0.52;
+    }
+    .collection-grid .card .card-inner {
+      grid-template-rows: auto minmax(1.3rem, auto) minmax(2.4rem, 1fr) auto;
+    }
+  }
   /* Center the description inside the space between the title and upgrade
      orbs. This gives the copy equal breathing room above and below without
      changing its font size or making the physical card any taller. */
@@ -3867,4 +3933,111 @@ header {
     #winOverlay .overlay-title { font-size: clamp(1.75rem, 5vw, 3rem); }
     #winOverlay .overlay-sub { line-height: 1.25; padding-block: .18rem; }
     .card-pack-reveal.card-enlarge-stage { width: min(29vw, 270px); max-height: none; }
+  }
+
+  /* CANONICAL CARD FACE
+     buildBigCardHTML() is now the only player-facing card renderer. These
+     rules scale that same art/title/description/orb structure to Collection,
+     Starter Deck, reward, and carousel boxes without substituting a compact
+     face or hiding any part of the card. */
+  .collection-card-wrap {
+    padding: 0 !important;
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+  .collection-card-wrap::before { display: none !important; content: none !important; }
+  .collection-grid .collection-card-wrap .card {
+    box-shadow: 5px 7px 0 rgba(0,0,0,.72) !important;
+  }
+
+  .collection-grid .card,
+  .starter-deck-grid .card,
+  .reward-choice-card {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    overflow: hidden;
+  }
+  .collection-grid .card > .big-card-art,
+  .starter-deck-grid .card > .big-card-art,
+  .reward-choice-card > .big-card-art {
+    width: 100%;
+    height: auto !important;
+    min-height: 0 !important;
+    aspect-ratio: 1 / 1;
+    flex: 0 0 auto !important;
+  }
+  .collection-grid .card > .big-card-body,
+  .starter-deck-grid .card > .big-card-body {
+    width: 100%;
+    box-sizing: border-box;
+    flex: 1 1 auto;
+    min-height: 0;
+    gap: .11rem;
+    padding: .3rem .24rem .38rem;
+    justify-content: flex-start;
+    overflow: hidden;
+  }
+  .collection-grid .card .big-card-name,
+  .starter-deck-grid .card .big-card-name {
+    flex: 0 0 auto;
+    font-size: .59rem;
+    line-height: 1.08;
+    letter-spacing: .035em;
+  }
+  .collection-grid .card .big-card-desc,
+  .starter-deck-grid .card .big-card-desc {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    font-size: .55rem;
+    line-height: 1.16;
+  }
+  .collection-grid .card .big-card-body > .mastery-orbs,
+  .starter-deck-grid .card .big-card-body > .mastery-orbs {
+    position: static;
+    flex: 0 0 auto;
+    margin: auto 0 0;
+    padding: 0;
+    gap: 5px;
+  }
+  .collection-grid .card .big-card-body > .mastery-orbs .mastery-orb,
+  .starter-deck-grid .card .big-card-body > .mastery-orbs .mastery-orb {
+    width: 10px;
+    height: 10px;
+    border-width: 2px;
+  }
+
+  .reward-choice-card {
+    aspect-ratio: .60;
+    height: auto;
+    min-height: 0;
+  }
+  .reward-choice-card > .big-card-body {
+    width: 100%;
+    box-sizing: border-box;
+    flex: 1 1 auto;
+    min-height: 0;
+    gap: .25rem;
+    padding: .55rem .48rem .65rem;
+    overflow: hidden;
+  }
+  .reward-choice-card .big-card-name { font-size: .82rem; line-height: 1.08; letter-spacing: .04em; }
+  .reward-choice-card .big-card-desc { font-size: .65rem; line-height: 1.25; }
+  .reward-choice-card .big-card-body > .mastery-orbs { position: static; margin: auto 0 0; }
+
+  @media (max-width: 560px) {
+    .collection-grid .card,
+    .starter-deck-grid .card { aspect-ratio: .52; }
+    .collection-grid .card > .big-card-body,
+    .starter-deck-grid .card > .big-card-body { padding-bottom: .46rem; }
+    .collection-grid .card .big-card-name,
+    .starter-deck-grid .card .big-card-name { font-size: .57rem; }
+    .collection-grid .card .big-card-desc,
+    .starter-deck-grid .card .big-card-desc { font-size: .53rem; }
   }
