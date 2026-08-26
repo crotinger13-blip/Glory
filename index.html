@@ -257,6 +257,7 @@
   <div class="glory-summary" id="gloryWinSummary" style="display:none"></div>
   <div class="card-pack-stage" id="cardPackStage" style="display:none"></div>
   <div id="cardChoices" style="display:flex;gap:1rem;flex-wrap:nowrap;justify-content:flex-start;margin:0 auto;padding:0.5rem;overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%;"></div>
+  <button class="overlay-btn" onclick="skipCardPackReward()" id="skipRewardBtn" style="display:none">Skip Reward — Continue to Level <span id="skipRewardLevelNum">2</span></button>
   <button class="overlay-btn" onclick="nextLevel()" id="continueBtn" style="display:none">Continue to Level <span id="nextLevelNum">2</span></button>
 </div>
 
@@ -290,11 +291,8 @@
   <button class="overlay-btn" onclick="restartLevelFresh()" style="background:rgba(60,20,20,0.85);border-color:rgba(180,60,60,0.6);color:#e8c8c8;">Restart Level (Randomised)</button>
 </div>
 
-<script src="bootstrap-and-media-1.js"></script>
+<script src="media-1.js"></script>
 <script src="media-2.js"></script>
-<script src="media-3.js"></script>
-<script src="media-4.js"></script>
-<script src="media-5.js"></script>
 <script src="game.js"></script>
 </body>
 </html>
