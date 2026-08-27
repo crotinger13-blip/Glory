@@ -453,7 +453,7 @@ const CARD_DEFS = {
   thors_hammer:    { name: "Thor's Hammer",  icon: '⚡', desc: 'Chain lightning - Strike enemies in a chain', rarity: 'uncommon', color: '#1a3320' },
   // ── WHITE (bonus) — not held, applies a permanent one-time effect the
   // moment you get it (reward pick, or Starter Deck at run start) ──
-  plus_one:        { name: 'Plus One',           icon: '➕', desc: 'Add one card to every future reward', rarity: 'white', color: '#3a3a3a', masteryCost: 10000 },
+  plus_one:        { name: 'Plus One',           icon: '➕', desc: 'Choose two packs to every future reward', rarity: 'white', color: '#3a3a3a', masteryCost: 10000 },
   reinforcements:  { name: 'Reinforcements',      icon: '🎖️', desc: 'Rally the men - Add one piece to your army', rarity: 'white', color: '#3a3a3a', masteryCost: 10000 },
   veteran:         { name: 'Veteran',             icon: '🪖', desc: 'Decorated hero - One unit starts as a king', rarity: 'white', color: '#3a3a3a', masteryCost: 10000 },
   ace_up_the_sleeve: { name: 'Ace up the Sleeve', icon: '🂡', desc: "Cheater - Gain one card action for this run", rarity: 'white', color: '#3a3a3a', masteryCost: 10000, plusOnly: true },
@@ -853,6 +853,12 @@ function migrateRunCardMasteryState() {
   if (typeof state.blackHoleUsedThisLevel !== 'boolean') {
     state.blackHoleUsedThisLevel = !!state.blackHoleActive;
   }
+  if (!Number.isFinite(state.cardPacksPurchasedThisReward)) {
+    state.cardPacksPurchasedThisReward = state.cardPackPurchasedThisReward ? 1 : 0;
+  }
+  if (!Number.isFinite(state.cardPackPurchaseLimitThisReward)) {
+    state.cardPackPurchaseLimitThisReward = 0;
+  }
 }
 
 function getWrathMaxUses(mode) {
@@ -861,6 +867,11 @@ function getWrathMaxUses(mode) {
 
 function getPlusOneRewardBonus(mode, baseOnly) {
   return getCardMasteryLevel('plus_one', mode, baseOnly) >= 1 ? 2 : 1;
+}
+
+function getGloryPackPurchaseLimit() {
+  const savedLimit = Number(state?.cardPackPurchaseLimitThisReward) || 0;
+  return Math.max(1, savedLimit || (1 + (Number(state?.rewardCardBonus) || 0)));
 }
 
 const REINFORCEMENT_PIECES_BY_LEVEL = [1, 2, 3];
@@ -1109,7 +1120,7 @@ function isDeadlyHazardForFriendly(cell, mode) {
 // is purely what tapping an orb explains about the upgrade path.
 const CARD_MASTERY_TIERS = {
   plus_one: [
-    'Add two more cards to every future reward screen',
+    'Choose three packs at every future reward',
   ],
   reinforcements: [
     'Add 2 pieces',
@@ -1383,7 +1394,7 @@ const CARD_BASE_EFFECTS = {
   lazarus: 'Passive: when your last unit falls, revive every fallen friendly unit where it was lost. Enemies on those squares are replaced.',
   sands_of_time: 'Reverse every board change from the previous 3 individual turns in under 5 seconds.',
   divine_intervention: 'Revive fallen friendly units as pawns in random available spaces.',
-  plus_one: 'Add one more card to every future reward screen.',
+  plus_one: 'Choose two packs to every future reward.',
   reinforcements: 'Add 1 piece.',
   veteran: '1 friendly unit starts Kinged.',
   ace_up_the_sleeve: 'Get 1 additional card action for this run.',
@@ -1630,15 +1641,20 @@ function getTStrikePattern(row, col, mode) {
   const range = getTStrikeRange(mode);
   const captured = [];
   const affected = [];
-  for (let r = 0; r < bsR; r++) {
-    if (r === row || Math.abs(r - row) > range) continue;
-    if (state.board[r][col].piece?.type === 'enemy') captured.push({ row: r, col });
-    affected.push({ row: r, col });
-  }
-  for (let c = 0; c < bsC; c++) {
-    if (c === col || Math.abs(c - col) > range) continue;
-    if (state.board[row][c].piece?.type === 'enemy') captured.push({ row, col: c });
-    affected.push({ row, col: c });
+  // Each bolt travels away from the firing unit one square at a time. The
+  // first unit in a direction blocks the shot: an enemy is hit, while a
+  // friendly unit safely stops the bolt and protects every unit behind it.
+  for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+    for (let distance = 1; distance <= range; distance++) {
+      const r = row + dr * distance;
+      const c = col + dc * distance;
+      if (r < 0 || r >= bsR || c < 0 || c >= bsC) break;
+      affected.push({ row: r, col: c });
+      const piece = state.board[r][c].piece;
+      if (!piece) continue;
+      if (piece.type === 'enemy') captured.push({ row: r, col: c });
+      break;
+    }
   }
   return { captured, affected, range };
 }
@@ -2248,6 +2264,38 @@ function getPuppetEligibleEnemyCells() {
     }
   }
   return eligible;
+}
+
+// Puppet Master can be put away before all of its controlled moves are spent.
+// Keep that partial progress on the physical card copy (uid), rather than in
+// disposable targeting UI state, so reopening it cannot restore the full value
+// and duplicate copies each retain their own independent remainder.
+function persistActivePuppetMasterProgress() {
+  if (state.activeCard !== 'puppet_master' || state.activeCardUid == null) return;
+  const card = state.cards.find(candidate => candidate.uid === state.activeCardUid);
+  if (!card) return;
+  card.puppetProgress = {
+    moved: Math.max(0, Number(state.puppetMoved) || 0),
+    movedIds: Array.isArray(state.puppetMovedIds) ? [...new Set(state.puppetMovedIds)] : [],
+    target: Math.max(0, Number(state.puppetMoveTarget) || 0)
+  };
+  saveGame();
+}
+
+function restorePuppetMasterProgress(card) {
+  const saved = card?.puppetProgress;
+  state.puppetMoved = Math.max(0, Number(saved?.moved) || 0);
+  state.puppetMovedIds = Array.isArray(saved?.movedIds) ? [...new Set(saved.movedIds)] : [];
+  state.puppetMoveTarget = Math.max(0, Number(saved?.target) || 0);
+}
+
+function clearActivePuppetMasterProgress() {
+  const card = state.cards.find(candidate => candidate.uid === state.activeCardUid);
+  if (card) delete card.puppetProgress;
+  state.puppetTarget = null;
+  state.puppetMoved = 0;
+  state.puppetMovedIds = [];
+  state.puppetMoveTarget = 0;
 }
 
 function handleShieldWallSelection(row, col) {
@@ -3719,6 +3767,8 @@ function initState(mode, startLevel, sfxMuted) {
     openingRewardPending: CARTOON_SHOWCASE_BUILD ? false : !tutorial.active,
     cardPackOpening: false,
     cardPackPurchasedThisReward: false,
+    cardPacksPurchasedThisReward: 0,
+    cardPackPurchaseLimitThisReward: 0,
     openingPackOpened: false,
     lastPackCardId: null,
     // Run-start sound-effects on/off toggle (see the level-select overlay
@@ -3728,7 +3778,7 @@ function initState(mode, startLevel, sfxMuted) {
     // triggerLose.
     sfxMuted: !!sfxMuted,
     whiteCardCount: starterWhiteCardCount, // total white cards this run (any kind, combined) — controls the shared white-card odds
-    rewardCardBonus: starterRewardCardBonus, // extra reward-screen choices this run, one per Plus One
+    rewardCardBonus: starterRewardCardBonus, // extra packs that may be purchased at each future market
     bonusPieces: starterBonusPieces,         // extra starting piece every level, one per Reinforcements
     veteranCount: starterVeteranCount,       // stacks — that many pieces start each level as a king, one per Veteran picked
     bonusCardActions: starterBonusCardActions, // extra card uses per turn, one per Ace up the Sleeve
@@ -4619,7 +4669,13 @@ function setupLevel() {
   }
   state.deadMansHandDiscardedCards = [];
   state.cards = state.cards.filter(c => !c.temporary);
-  state.cards = state.cards.map(c => ({...c, used:false}));
+  state.cards = state.cards.map(c => {
+    const resetCard = {...c, used:false};
+    // An unfinished Puppet Master allowance belongs only to the battlefield
+    // where it began. Every new level refreshes each copy normally.
+    delete resetCard.puppetProgress;
+    return resetCard;
+  });
   // A new battlefield starts a new resurrection history. Lazarus itself
   // remains in hand across levels until it actually triggers.
   state.lazarusGraveyard = [];
@@ -5749,6 +5805,26 @@ function preferEnemyBlackHoleAvoidance(list) {
   return list.filter(mv => distance(mv) === farthest);
 }
 
+function buildEnemyTurnQueueBottomUp(board) {
+  const enemyIds = [];
+  // Resolve the formation from the bottom of the displayed board upward.
+  // Front-line pieces therefore vacate their squares before the rows behind
+  // them are evaluated. Randomize only within a row to avoid left/right bias.
+  for (let r = board.length - 1; r >= 0; r--) {
+    const rowIds = [];
+    for (let c = 0; c < board[r].length; c++) {
+      const piece = board[r][c].piece;
+      if (piece && piece.type === 'enemy') rowIds.push(piece.id);
+    }
+    for (let i = rowIds.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [rowIds[i], rowIds[j]] = [rowIds[j], rowIds[i]];
+    }
+    enemyIds.push(...rowIds);
+  }
+  return enemyIds;
+}
+
 // Runs every enemy piece's action for the turn, one at a time. Mandatory
 // capture: any enemy that can capture MUST (and keeps chaining captures from
 // its landing square until it runs out); enemies with no capture take a
@@ -5772,6 +5848,7 @@ function startEnemyTurn(resumeSavedTurn = false) {
   if (state.doubleCardNext && state.activeCardUid != null) {
     state.heroGambitReservedCardUid = state.activeCardUid;
   }
+  persistActivePuppetMasterProgress();
   state.activeCard = null;
   state.activeCardUid = null;
   if (!resuming) state.enemyMovedThisTurn = false; // will be set true if any enemy actually moves
@@ -5784,20 +5861,17 @@ function startEnemyTurn(resumeSavedTurn = false) {
 
   const bsR = getBoardRows();
   const bsC = getBoardCols();
-  let enemyIds = resuming && Array.isArray(state.enemyTurnRemainingIds)
-    ? state.enemyTurnRemainingIds.slice()
-    : [];
-  if (!resuming || !Array.isArray(state.enemyTurnRemainingIds)) {
-    for (let r = 0; r < bsR; r++) {
-      for (let c = 0; c < bsC; c++) {
-        const p = state.board[r][c].piece;
-        if (p && p.type === 'enemy') enemyIds.push(p.id);
-      }
-    }
-    for (let i = enemyIds.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [enemyIds[i], enemyIds[j]] = [enemyIds[j], enemyIds[i]];
-    }
+  const hasSavedEnemyQueue = resuming && Array.isArray(state.enemyTurnRemainingIds);
+  let enemyIds = [];
+  if (hasSavedEnemyQueue) {
+    // A game can be closed during the enemy phase. Rebuild the unspent part
+    // of that saved queue by current screen row as well, so a resumed turn
+    // cannot revive the older randomized ordering for even one cycle.
+    const remainingIds = new Set(state.enemyTurnRemainingIds);
+    enemyIds = buildEnemyTurnQueueBottomUp(state.board).filter(id => remainingIds.has(id));
+    state.enemyTurnRemainingIds = enemyIds.slice();
+  } else {
+    enemyIds = buildEnemyTurnQueueBottomUp(state.board);
     state.enemyTurnRemainingIds = enemyIds.slice();
     state.blackHolePulseResolvedThisEnemyTurn = false;
     saveGame();
@@ -6802,10 +6876,7 @@ function cellClick(row, col) {
     // open adjacent destination, and shrinks again if later moves trap them.
     if (state.activeCard === 'puppet_master') {
       function finishPuppetMaster() {
-        state.puppetTarget = null;
-        state.puppetMoved = 0;
-        state.puppetMovedIds = [];
-        state.puppetMoveTarget = 0;
+        clearActivePuppetMasterProgress();
         markCardUsed('puppet_master');
         state.activeCard = null;
         state.activeCardUid = null;
@@ -6834,6 +6905,7 @@ function cellClick(row, col) {
           if (eligibleEnemiesLeft < state.puppetMoveTarget - state.puppetMoved) {
             state.puppetMoveTarget = state.puppetMoved + eligibleEnemiesLeft;
           }
+          persistActivePuppetMasterProgress();
           if (state.puppetMoved >= state.puppetMoveTarget || eligibleEnemiesLeft === 0) {
             finishPuppetMaster();
             render();
@@ -7373,6 +7445,7 @@ function cellClick(row, col) {
       if (state.selected.row === r && state.selected.col === c) {
         const confirmMove = state.validMoves.find(m => m.row === r && m.col === c);
         const captured = confirmMove ? confirmMove.captured : [];
+        const affected = confirmMove ? confirmMove.affected : [];
         if (captured.length === 0) { setMessage(''); return; }
         const usedCard = state.activeCard;
         markCardUsed(usedCard);
@@ -7390,7 +7463,7 @@ function cellClick(row, col) {
           finishUncommonAnimationResolution();
           if (countPieces('enemy') === 0) { triggerWin(); return; }
           setMessage('');
-        });
+        }, affected);
         return;
       }
       const { captured, affected } = getTStrikePattern(r, c, state.mode);
@@ -8673,6 +8746,7 @@ function activateCard(uid) {
   }
 
   if (state.activeCardUid === uid) {
+    persistActivePuppetMasterProgress();
     state.activeCardUid = null;
     state.activeCard = null;
     state.activeCardMasteryId = null;
@@ -8692,10 +8766,16 @@ function activateCard(uid) {
     state.puppetMoved = 0;
     state.puppetMovedIds = [];
     state.puppetMoveTarget = 0;
+    saveGame();
     render();
     setMessage('');
     return;
   }
+
+  // Switching directly from a partially used Puppet Master to another card
+  // is also a put-away action. Preserve its exact remainder before replacing
+  // the active uid.
+  persistActivePuppetMasterProgress();
 
   // Hero's Gambit's promised card can be activated immediately, including
   // both activations when the normal per-turn card budget is already full.
@@ -8805,18 +8885,35 @@ function activateCard(uid) {
   }
 
   if (card.id === 'puppet_master') {
-    // Never demand more distinct moves than there are eligible enemies.
-    // This cap is recomputed after every move in case the board changes.
-    state.puppetMoved = 0;
-    state.puppetMovedIds = [];
-    state.puppetMoveTarget = Math.min(getPuppetMasterTargetCount(state.mode), getPuppetEligibleEnemyCells().length);
-    if (state.puppetMoveTarget === 0) {
+    restorePuppetMasterProgress(card);
+    const hadSavedProgress = state.puppetMoveTarget > 0 || state.puppetMoved > 0;
+    const eligibleNow = getPuppetEligibleEnemyCells().length;
+    if (!hadSavedProgress && eligibleNow === 0) {
       state.activeCardUid = null;
       state.activeCard = null;
       render();
       setMessage('NO ENEMIES HAVE ELIGIBLE MOVES');
       return;
     }
+    if (state.puppetMoveTarget === 0) {
+      // First activation of this physical copy: cap its allowance to the
+      // distinct enemy pieces that can actually be moved right now.
+      state.puppetMoveTarget = Math.min(getPuppetMasterTargetCount(state.mode), eligibleNow);
+    } else if (eligibleNow < state.puppetMoveTarget - state.puppetMoved) {
+      // Board changes while the card was put away can reduce what remains.
+      state.puppetMoveTarget = state.puppetMoved + eligibleNow;
+    }
+    if (state.puppetMoveTarget <= state.puppetMoved) {
+      clearActivePuppetMasterProgress();
+      markCardUsed('puppet_master');
+      state.activeCard = null;
+      state.selected = null;
+      state.validMoves = [];
+      render();
+      setMessage('NO MORE ENEMIES HAVE ELIGIBLE MOVES');
+      return;
+    }
+    persistActivePuppetMasterProgress();
   }
   // Remember which card the player chose after paying Hero's Gambit. If the
   // targeting flow is postponed by ending the turn, this reservation remains
@@ -8967,7 +9064,6 @@ function renderGloryCardPacks(opening = false) {
   stage.classList.remove('pack-revealing');
   stage.style.display = 'flex';
   state.cardPackOpening = false;
-  state.cardPackPurchasedThisReward = false;
   if (opening) stage.appendChild(buildGloryPackElement('common', 0, true));
   else {
     const marketRarities = ['common', 'uncommon', 'rare'];
@@ -8997,6 +9093,10 @@ function displayGloryPackReveal(cardId) {
   document.getElementById('winSub').textContent = `${CARD_DEFS[cardId].name} has been added to this run.`;
   const skipRewardBtn = document.getElementById('skipRewardBtn');
   if (skipRewardBtn) skipRewardBtn.style.display = 'none';
+  const anotherPackBtn = document.getElementById('anotherPackBtn');
+  const canBuyAnother = !state.openingRewardPending &&
+    (state.cardPacksPurchasedThisReward || 0) < getGloryPackPurchaseLimit();
+  if (anotherPackBtn) anotherPackBtn.style.display = canBuyAnother ? 'inline-block' : 'none';
   const continueBtn = document.getElementById('continueBtn');
   continueBtn.disabled = false;
   continueBtn.style.pointerEvents = '';
@@ -9005,8 +9105,29 @@ function displayGloryPackReveal(cardId) {
   document.getElementById('nextLevelNum').textContent = state.openingRewardPending ? state.level : state.level + 1;
 }
 
+function returnToGloryPackMarket() {
+  if (!state || state.openingRewardPending || state.cardPackOpening) return;
+  if ((state.cardPacksPurchasedThisReward || 0) >= getGloryPackPurchaseLimit()) return;
+  const anotherPackBtn = document.getElementById('anotherPackBtn');
+  if (anotherPackBtn) anotherPackBtn.style.display = 'none';
+  const continueBtn = document.getElementById('continueBtn');
+  if (continueBtn) continueBtn.style.display = 'none';
+  const skipRewardBtn = document.getElementById('skipRewardBtn');
+  if (skipRewardBtn) {
+    skipRewardBtn.style.display = 'inline-block';
+    skipRewardBtn.disabled = false;
+    skipRewardBtn.style.pointerEvents = '';
+    skipRewardBtn.style.opacity = '';
+    document.getElementById('skipRewardLevelNum').textContent = state.level + 1;
+  }
+  document.getElementById('winSub').textContent =
+    `${getGloryPackPurchaseLimit() - (state.cardPacksPurchasedThisReward || 0)} pack choice remaining — buy one or continue.`;
+  renderGloryCardPacks(false);
+}
+
 function openGloryCardPack(pack, rarity, price, free) {
-  if (!state || state.cardPackOpening || state.cardPackPurchasedThisReward || pack.classList.contains('opened')) return;
+  if (!state || state.cardPackOpening || pack.classList.contains('opened')) return;
+  if (!free && (state.cardPacksPurchasedThisReward || 0) >= getGloryPackPurchaseLimit()) return;
   if (!free && (state.glory || 0) < price) {
     showGameDialog(`You need ${price.toLocaleString()} Glory to open this ${getRarityDisplayName(rarity)} pack.`, { title: 'NOT ENOUGH GLORY' });
     return;
@@ -9025,7 +9146,8 @@ function openGloryCardPack(pack, rarity, price, free) {
     pendingContinue.style.opacity = '.45';
   }
   if (!free) {
-    state.cardPackPurchasedThisReward = true;
+    state.cardPacksPurchasedThisReward = (state.cardPacksPurchasedThisReward || 0) + 1;
+    state.cardPackPurchasedThisReward = state.cardPacksPurchasedThisReward > 0;
     awardGlory(-price, `${getRarityDisplayName(rarity).toUpperCase()} PACK`);
     renderGlorySummary('gloryWinSummary', true);
   }
@@ -9048,7 +9170,7 @@ function openGloryCardPack(pack, rarity, price, free) {
 }
 
 function skipCardPackReward() {
-  if (!state || state.openingRewardPending || state.cardPackOpening || state.cardPackPurchasedThisReward) return;
+  if (!state || state.openingRewardPending || state.cardPackOpening) return;
   const skipRewardBtn = document.getElementById('skipRewardBtn');
   if (skipRewardBtn) {
     skipRewardBtn.disabled = true;
@@ -9100,6 +9222,8 @@ function renderRewardCardChoices(choices) {
 function showOpeningRewardChoice() {
   state.openingRewardPending = true;
   state.pendingRewardCardId = null;
+  state.cardPacksPurchasedThisReward = 0;
+  state.cardPackPurchaseLimitThisReward = 1;
 
   const title = document.getElementById('winTitle');
   if (title) title.textContent = 'YOUR FIRST CARD PACK';
@@ -9112,6 +9236,8 @@ function showOpeningRewardChoice() {
   continueBtn.innerHTML = `Begin Level <span id="nextLevelNum">${state.level}</span>`;
   const skipRewardBtn = document.getElementById('skipRewardBtn');
   if (skipRewardBtn) skipRewardBtn.style.display = 'none';
+  const anotherPackBtn = document.getElementById('anotherPackBtn');
+  if (anotherPackBtn) anotherPackBtn.style.display = 'none';
 
   renderGloryCardPacks(true);
   if (state.openingPackOpened && state.lastPackCardId && CARD_DEFS[state.lastPackCardId]) {
@@ -9149,6 +9275,8 @@ function triggerWin() {
     skipRewardBtn.style.pointerEvents = '';
     skipRewardBtn.style.opacity = '';
   }
+  const anotherPackBtn = document.getElementById('anotherPackBtn');
+  if (anotherPackBtn) anotherPackBtn.style.display = 'none';
   // The tutorial's final Catapult blast kills its last 2 enemies same as any
   // real win would — but instead of skipping the real reward screen, let it
   // actually show (forced to the card-choice branch, since this is only
@@ -9180,6 +9308,9 @@ function triggerWin() {
   const earnCard = state.levelsCompleted % 2 === 0; // one card-pack market every 2 levels cleared
 
   state.pendingRewardCardId = null;
+  state.cardPacksPurchasedThisReward = 0;
+  state.cardPackPurchasedThisReward = false;
+  state.cardPackPurchaseLimitThisReward = 1 + (Number(state.rewardCardBonus) || 0);
   // Cleared unconditionally, not just inside the earnCard branch below — a
   // previous win's reward cards would otherwise still be sitting in the DOM
   // (and briefly visible) the next time a level is cleared without earning
@@ -9930,6 +10061,11 @@ function nextLevel() {
     skipRewardBtn.style.pointerEvents = '';
     skipRewardBtn.style.opacity = '';
   }
+  const anotherPackBtn = document.getElementById('anotherPackBtn');
+  if (anotherPackBtn) anotherPackBtn.style.display = 'none';
+  state.cardPacksPurchasedThisReward = 0;
+  state.cardPackPurchasedThisReward = false;
+  state.cardPackPurchaseLimitThisReward = 0;
   const packStage = document.getElementById('cardPackStage');
   if (packStage) { packStage.style.display = 'none'; packStage.innerHTML = ''; packStage.classList.remove('pack-revealing'); }
   const cardChoices = document.getElementById('cardChoices');
@@ -9955,9 +10091,8 @@ function nextLevel() {
     claimRunCardMastery(cardId);
     const rewardBaseOnly = false;
     if (cardId === 'plus_one') {
-      // Not held — just permanently widens every future reward screen
-      // this run. whiteCardCount is what actually makes white cards rarer
-      // to pull again (shared across every white card, see WHITE_CARD_POOL).
+      // Not held — permanently raises the number of packs that may be bought
+      // at each future market. whiteCardCount still controls Bonus-card odds.
       state.whiteCardCount = (state.whiteCardCount || 0) + 1;
       state.rewardCardBonus = (state.rewardCardBonus || 0) + getPlusOneRewardBonus(state.mode, rewardBaseOnly);
     } else if (cardId === 'reinforcements') {
@@ -11115,7 +11250,7 @@ function animateWrath(captured, onComplete) {
   requestAnimationFrame(draw);
 }
 
-function animateBallista(anchorRow, anchorCol, captured, onComplete) {
+function animateBallista(anchorRow, anchorCol, captured, onComplete, affected = null) {
   playBallistaSound();
   const boardEl = document.getElementById('board');
   const bsR = getBoardRows();
@@ -11146,24 +11281,26 @@ function animateBallista(anchorRow, anchorCol, captured, onComplete) {
   const anchorC = getCellCenter(boardEl, boardRect, bsC, anchorRow, anchorCol);
   const anchorX = anchorC.x, anchorY = anchorC.y;
 
-  // Distance from the firing position out to the true board edge, in each
-  // direction — measured from the real DOM cell rects (not an even-grid
-  // approximation), so arrows travel the exact real distance regardless of
-  // the board's padding/gap.
-  const range = getTStrikeRange(state.mode);
-  const topRow = Number.isFinite(range) ? Math.max(0, anchorRow - range) : 0;
-  const bottomRow = Number.isFinite(range) ? Math.min(bsR - 1, anchorRow + range) : bsR - 1;
-  const leftCol = Number.isFinite(range) ? Math.max(0, anchorCol - range) : 0;
-  const rightCol = Number.isFinite(range) ? Math.min(bsC - 1, anchorCol + range) : bsC - 1;
+  // Use the exact resolved lane lengths. This keeps the visible arrows from
+  // flying through the friendly/enemy blocker that already stopped gameplay.
+  const resolvedAffected = Array.isArray(affected) && affected.length
+    ? affected
+    : getTStrikePattern(anchorRow, anchorCol, state.mode).affected;
+  const verticalRows = resolvedAffected.filter(cell => cell.col === anchorCol).map(cell => cell.row);
+  const horizontalCols = resolvedAffected.filter(cell => cell.row === anchorRow).map(cell => cell.col);
+  const topRow = verticalRows.filter(row => row < anchorRow).reduce((min, row) => Math.min(min, row), anchorRow);
+  const bottomRow = verticalRows.filter(row => row > anchorRow).reduce((max, row) => Math.max(max, row), anchorRow);
+  const leftCol = horizontalCols.filter(col => col < anchorCol).reduce((min, col) => Math.min(min, col), anchorCol);
+  const rightCol = horizontalCols.filter(col => col > anchorCol).reduce((max, col) => Math.max(max, col), anchorCol);
   const topEdgeC = getCellCenter(boardEl, boardRect, bsC, topRow, anchorCol);
   const botEdgeC = getCellCenter(boardEl, boardRect, bsC, bottomRow, anchorCol);
   const leftEdgeC = getCellCenter(boardEl, boardRect, bsC, anchorRow, leftCol);
   const rightEdgeC = getCellCenter(boardEl, boardRect, bsC, anchorRow, rightCol);
   const DIRS = {
-    up:    { dx: 0, dy: -1, dist: anchorY - (topEdgeC.y - topEdgeC.h / 2) },
-    down:  { dx: 0, dy: 1,  dist: (botEdgeC.y + botEdgeC.h / 2) - anchorY },
-    left:  { dx: -1, dy: 0, dist: anchorX - (leftEdgeC.x - leftEdgeC.w / 2) },
-    right: { dx: 1, dy: 0,  dist: (rightEdgeC.x + rightEdgeC.w / 2) - anchorX },
+    up:    { dx: 0, dy: -1, dist: Math.max(0, anchorY - topEdgeC.y) },
+    down:  { dx: 0, dy: 1,  dist: Math.max(0, botEdgeC.y - anchorY) },
+    left:  { dx: -1, dy: 0, dist: Math.max(0, anchorX - leftEdgeC.x) },
+    right: { dx: 1, dy: 0,  dist: Math.max(0, rightEdgeC.x - anchorX) },
   };
   const DIR_STAGGER = { up: 0, down: 40, left: 80, right: 120 };
 
