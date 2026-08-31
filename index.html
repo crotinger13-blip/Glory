@@ -232,6 +232,7 @@
 
   <div class="btn-row">
     <button class="btn primary" id="endTurnBtn" style="display:none;" onclick="endPlayerTurn()">End Turn</button>
+    <button class="btn primary" id="developerSkipBtn" style="display:none;" onclick="developerSkipLevel()">Skip Level</button>
     <button class="btn primary" onclick="returnToMenu()">Menu</button>
     <!-- Escape hatch for the rare soft-locked board (e.g. the only reachable
          enemy left is stranded on a square nothing in hand can reach) —
@@ -257,8 +258,6 @@
   <div class="glory-summary" id="gloryWinSummary" style="display:none"></div>
   <div class="card-pack-stage" id="cardPackStage" style="display:none"></div>
   <div id="cardChoices" style="display:flex;gap:1rem;flex-wrap:nowrap;justify-content:flex-start;margin:0 auto;padding:0.5rem;overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%;"></div>
-  <button class="overlay-btn" onclick="skipCardPackReward()" id="skipRewardBtn" style="display:none">Skip Reward — Continue to Level <span id="skipRewardLevelNum">2</span></button>
-  <button class="overlay-btn" onclick="returnToGloryPackMarket()" id="anotherPackBtn" style="display:none">Choose Another Pack</button>
   <button class="overlay-btn" onclick="nextLevel()" id="continueBtn" style="display:none">Continue to Level <span id="nextLevelNum">2</span></button>
 </div>
 
@@ -294,6 +293,9 @@
 
 <script src="media-1.js"></script>
 <script src="media-2.js"></script>
+<script src="media-3.js"></script>
+<script src="media-4.js"></script>
+<script src="media-5.js"></script>
 <script src="game.js"></script>
 </body>
 </html>
