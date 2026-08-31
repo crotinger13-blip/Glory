@@ -100,8 +100,7 @@
        made wide rectangular boards (level 20+) render with tiny,
        hard-to-tap cells. Switching to a two-column layout here gives the
        board nearly the FULL viewport height to work with instead. */
-    @media (orientation: landscape) and (max-height: 550px),
-           (min-width: 560px) and (max-width: 720px) and (min-height: 560px) and (max-height: 720px) {
+    @media (orientation: landscape) and (max-height: 550px) {
       .app {
         grid-template-columns: minmax(180px, min(36vw, 280px)) max-content;
         grid-template-rows: repeat(5, auto);
@@ -942,9 +941,7 @@
       border-radius: 50%;
       background:
         radial-gradient(circle at 50% 42%, #1a0d06 0%, #0a0503 55%, #000000 100%);
-      box-shadow:
-        inset 0 0 10% rgba(0,0,0,0.9),
-        inset 0 0 3% 1px rgba(255,110,40,0.35);
+      box-shadow: none;
       z-index: 2;
     }
 
@@ -956,10 +953,10 @@
        flames sit at a low z-index, well under the piece art. */
     .wildfire-cell {
       position: absolute;
-      inset: 4%;
-      border-radius: 3px;
-      background: radial-gradient(circle at 50% 70%, #2a0f04 0%, #150703 60%, #0a0402 100%);
-      box-shadow: 0 0 22% 4px rgba(255,90,20,0.28);
+      inset: 0;
+      border-radius: 0;
+      background: transparent;
+      box-shadow: none;
       z-index: 2;
       overflow: visible;
     }
@@ -973,14 +970,13 @@
       filter: blur(0.3px);
       transform-origin: 50% 100%;
     }
-    .wildfire-flame-1 { left: 22%; animation: wildfireFlicker 1.7s ease-in-out infinite; }
-    .wildfire-flame-2 { left: 44%; height: 58%; animation: wildfireFlicker 1.4s ease-in-out infinite 0.3s; }
-    .wildfire-flame-3 { left: 62%; animation: wildfireFlicker 2s ease-in-out infinite 0.6s; }
+    .wildfire-flame-1 { left: 12%; animation: wildfireFlicker .82s ease-in-out infinite alternate; }
+    .wildfire-flame-2 { left: 37%; height: 58%; animation: wildfireFlicker .64s ease-in-out -.21s infinite alternate; }
+    .wildfire-flame-3 { left: 62%; animation: wildfireFlicker .96s ease-in-out -.43s infinite alternate; }
     @keyframes wildfireFlicker {
-      0%, 100% { transform: scaleY(1) scaleX(1) skewX(0deg); opacity: 0.9; }
-      25%      { transform: scaleY(1.08) scaleX(0.92) skewX(-3deg); opacity: 1; }
-      50%      { transform: scaleY(0.92) scaleX(1.05) skewX(2deg); opacity: 0.85; }
-      75%      { transform: scaleY(1.04) scaleX(0.96) skewX(-2deg); opacity: 0.95; }
+      0%   { transform: scale(.76,.84) rotate(-7deg) skewX(-3deg); opacity:.68; }
+      48%  { transform: scale(1.08,1.2) rotate(5deg) skewX(2deg); opacity:1; }
+      100% { transform: scale(.88,1.02) rotate(-3deg) skewX(-1deg); opacity:.82; }
     }
 
     /* Mad Cow's leftover poison field — a temporary (3-turn) hazard, same
@@ -3297,6 +3293,32 @@ header {
   box-shadow: 0 6px 0 rgba(0,0,0,.75);
   font-weight: 800;
 }
+/* The floating carousel panel sits on light parchment. Its rule rows had
+   retained the original dark-card gray, leaving upgrade copy washed out. */
+.carousel-rules-float .card-rule-row,
+.carousel-rules-float .card-rule-text,
+.carousel-rules-float .card-rule-label,
+.carousel-rules-float .card-rule-row.reached .card-rule-text,
+.carousel-rules-float .card-rule-row.reached .card-rule-label {
+  color: #090806 !important;
+  text-shadow: none !important;
+}
+/* The live carousel rules are built with floating-card-rule classes (the
+   card-rule selectors above belong to an older renderer). Keep every state
+   fully legible against the parchment panel, including reached/unavailable
+   rows and their BASE/ORB labels. */
+.carousel-rules-float .floating-card-rule,
+.carousel-rules-float .floating-card-rule.reached,
+.carousel-rules-float .floating-card-rule.unavailable,
+.carousel-rules-float .floating-card-rule strong,
+.carousel-rules-float .floating-card-rule.reached strong,
+.carousel-rules-float .floating-card-rule.unavailable strong {
+  color: #090806 !important;
+  text-shadow: none !important;
+}
+.carousel-rules-float .floating-card-rule.unavailable {
+  opacity: 0.82;
+}
 .tutorial-banner {
   background: var(--paper-light);
   color: var(--ink);
@@ -3308,7 +3330,26 @@ header {
 
 /* Existing card-effect elements become bolder, brighter comic-book beats. */
 .charge-impact-flash { width: 28px; height: 28px; border: 4px solid var(--ink); background: var(--cartoon-gold-light); box-shadow: 0 0 0 8px var(--cartoon-red), 0 0 30px 14px rgba(255,217,104,.8); }
-.bear-trap-icon svg, .wildfire-cell, .poison-cell, .meteor-crater { filter: saturate(1.4) contrast(1.12) drop-shadow(3px 4px 0 rgba(0,0,0,.55)); }
+.bear-trap-icon svg, .poison-cell { filter: saturate(1.4) contrast(1.12) drop-shadow(3px 4px 0 rgba(0,0,0,.55)); }
+.wildfire-cell { filter: saturate(1.18); }
+.meteor-crater { filter: saturate(1.08) contrast(1.04); }
+.sanctuary-zone { box-shadow:none!important; }
+.sanctuary-perimeter { position:absolute; inset:1px; z-index:8; pointer-events:none; border:0 solid #38c8ff; filter:drop-shadow(0 0 4px rgba(56,200,255,.95)); }
+.sanctuary-top { border-top-width:4px; }
+.sanctuary-right { border-right-width:4px; }
+.sanctuary-bottom { border-bottom-width:4px; }
+.sanctuary-left { border-left-width:4px; }
+.portcullis-row { box-shadow:inset 0 0 0 4px #b08a36,inset 0 0 18px rgba(25,18,10,.9)!important; }
+.royal-standard-zone::before { content:''; position:absolute; inset:1px; z-index:8; pointer-events:none; border:0 solid rgba(242,196,71,.96); filter:drop-shadow(0 0 3px rgba(242,196,71,.45)); }
+.royal-standard-top::before { border-top-width:4px; }
+.royal-standard-right::before { border-right-width:4px; }
+.royal-standard-bottom::before { border-bottom-width:4px; }
+.royal-standard-left::before { border-left-width:4px; }
+.royal-standard-banner::after { content:'⚑'; position:absolute; inset:0; display:grid; place-items:center; z-index:9; color:#d8aa34; font-size:72%; text-shadow:2px 2px #15100a; pointer-events:none; }
+.gallows-marked::after,.bounty-marked::after { content:'⌖'; position:absolute; inset:0; display:grid; place-items:center; z-index:11; color:#f2c447; text-shadow:0 0 5px #000; pointer-events:none; }
+.gallows-marked::after { font-size:135%; }
+.bounty-marked::after { font-size:175%; }
+.false-king { filter:grayscale(1) brightness(.38) contrast(1.5)!important; }
 .wildfire-flame { filter: drop-shadow(2px 2px 0 var(--ink)); }
 .piece.king-entering { animation-duration: .75s; }
 .wrath-shake { animation-duration: .65s; }
@@ -3357,7 +3398,6 @@ header {
    more compositor work than the actual game. Preserve every hazard/status
    visually, but hold the tiny ambient loops still while the board is dense;
    major card animations continue at full strength on their canvas. */
-.dense-board .wildfire-flame,
 .dense-board .poison-bubble,
 .dense-board .piece.shielded::after,
 .dense-board .piece.countering::after,
@@ -3793,8 +3833,7 @@ header {
     text-shadow: 1px 2px 0 #160b06;
     flex: 0 0 auto;
   }
-  #winOverlay #continueBtn,
-  #winOverlay #skipRewardBtn {
+  #winOverlay #continueBtn {
     flex: 0 0 auto;
     margin: .15rem 0 max(.35rem, 1vh);
   }
@@ -3929,8 +3968,7 @@ header {
     .glory-pack { width: min(28vw, 144px); height: min(42vw, 216px); flex-basis: min(28vw, 144px); }
     .glory-pack-copy { inset-inline: 3%; }
     .card-pack-reveal.card-enlarge-stage { width: min(68vw, 300px); max-height: none; }
-    #winOverlay #continueBtn,
-    #winOverlay #skipRewardBtn { margin-bottom: 1rem; }
+    #winOverlay #continueBtn { margin-bottom: 1rem; }
   }
   @media (max-height: 720px) and (min-width: 521px) {
     #winOverlay { gap: .35rem; padding-block: .65rem; }
@@ -4044,4 +4082,40 @@ header {
     .starter-deck-grid .card .big-card-name { font-size: .57rem; }
     .collection-grid .card .big-card-desc,
     .starter-deck-grid .card .big-card-desc { font-size: .53rem; }
+  }
+
+  /* Secret Passage endpoints stay below pieces while remaining readable on
+     every board theme. Each color marks one two-way tunnel pair. */
+  .secret-passage-marker {
+    --passage-color: #343a40;
+    position: absolute;
+    inset: 9%;
+    z-index: 1;
+    border: clamp(3px, .42vmin, 6px) solid var(--passage-color);
+    border-radius: 50%;
+    box-sizing: border-box;
+    background:
+      radial-gradient(circle at 48% 44%, rgba(255,255,255,.08) 0 8%, transparent 9%),
+      radial-gradient(circle, #050505 0 43%, #111 44% 58%, var(--passage-color) 59% 73%, #070707 74% 100%);
+    box-shadow:
+      0 0 0 2px rgba(0,0,0,.82),
+      inset 0 0 10px rgba(0,0,0,.95),
+      0 0 9px color-mix(in srgb, var(--passage-color) 72%, transparent);
+    pointer-events: none;
+  }
+  .secret-passage-marker::after {
+    content: '';
+    position: absolute;
+    inset: 27%;
+    border-radius: 50%;
+    background: #010101;
+    box-shadow: inset 0 0 5px rgba(255,255,255,.1);
+  }
+  .secret-passage-gray { --passage-color: #4b535b; }
+  .secret-passage-green { --passage-color: #174d35; }
+  .secret-passage-blue { --passage-color: #173f68; }
+  .secret-passage-marker.pending { animation: secretPassagePulse .8s ease-in-out infinite alternate; }
+  @keyframes secretPassagePulse {
+    from { transform: scale(.88); filter: brightness(.85); }
+    to { transform: scale(1.04); filter: brightness(1.35); }
   }
