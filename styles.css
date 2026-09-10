@@ -1,4 +1,3 @@
-
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
       --black: #0d0d0d;
@@ -1575,6 +1574,18 @@
     .floating-card-rule.reached { color: #ead9b8; }
     .floating-card-rule.reached strong { color: var(--gold-light); }
     .floating-card-rule.unavailable { opacity: 0.68; }
+    .floating-card-rule.how-to-play {
+      grid-column: 1 / -1;
+      padding: 0.34rem 0.45rem;
+      border: 2px solid rgba(106,72,25,0.55);
+      border-radius: 6px;
+      background: rgba(200,146,42,0.16);
+      color: #090806;
+      font-weight: 800;
+    }
+    .floating-card-rule.how-to-play strong {
+      color: #8f1f2f;
+    }
     @media (max-width: 430px) {
       .floating-card-rules { grid-template-columns: 1fr; gap: 0.12rem; }
       .floating-card-rule { font-size: clamp(0.58rem, 2.55vw, 0.7rem); }
@@ -1606,7 +1617,22 @@
         width: 12px;
         height: 12px;
       }
-      .carousel-rules-float { display: none !important; }
+      /* The old layout hid all card rules in landscape. Keep the guide beside
+         the card instead, where it remains readable without covering it. */
+      .carousel-rules-float.visible {
+        display: block !important;
+        left: 0.45rem;
+        top: 50%;
+        bottom: auto;
+        width: min(34vw, 340px);
+        max-height: 92vh;
+        overflow-y: auto;
+        transform: translateY(-50%);
+        padding: 0.35rem 0.45rem;
+      }
+      .carousel-rules-float .floating-card-rule {
+        font-size: clamp(0.5rem, 1.55vh, 0.68rem);
+      }
     }
     /* While actively dragging, transforms follow the finger with no transition lag;
        the transition comes back the instant you let go, so the snap/focus settle animates. */
@@ -1984,6 +2010,90 @@
 
     .overlay-btn:hover { background: var(--gold); color: var(--black); }
 
+    /* Main-menu audio settings. Kept as a self-contained panel so more
+       settings can be added later without rebuilding the menu layout. */
+    #settingsOverlay { z-index: 6100; }
+    .settings-panel {
+      position: relative;
+      z-index: 1;
+      width: min(88vw, 430px);
+      display: flex;
+      flex-direction: column;
+      gap: 0.9rem;
+      padding: 1.25rem;
+      border: 4px solid var(--ink);
+      border-radius: 16px;
+      background: rgba(35,29,22,0.96);
+      box-shadow: inset 0 0 0 3px var(--cartoon-gold), 0 9px 0 rgba(0,0,0,.72);
+    }
+    .settings-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 1rem;
+      padding: 0.8rem;
+      border: 2px solid rgba(233,202,134,.28);
+      border-radius: 10px;
+      background: rgba(233,202,134,.08);
+      text-align: left;
+    }
+    .settings-label {
+      color: var(--paper-light);
+      font-family: var(--font-body);
+      font-weight: 900;
+      font-size: 0.82rem;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+    .settings-toggle {
+      min-width: 92px;
+      padding: .55rem .7rem !important;
+    }
+    .settings-volume-row {
+      grid-template-columns: 1fr;
+      gap: .65rem;
+    }
+    .settings-volume-heading {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+    }
+    #musicVolumeValue {
+      color: var(--cartoon-gold-light);
+      font-family: var(--font-mono);
+      font-size: .8rem;
+      font-weight: 900;
+    }
+    #musicVolumeSlider {
+      width: 100%;
+      height: 12px;
+      margin: .15rem 0;
+      accent-color: var(--cartoon-red);
+      cursor: pointer;
+    }
+    #languageEntryOverlay { z-index: 7000; }
+    .language-choice-grid {
+      width: min(86vw, 420px);
+      display: grid;
+      gap: .75rem;
+      max-height: min(44vh, 360px);
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      scrollbar-gutter: stable;
+      padding: .15rem .35rem .15rem .15rem;
+    }
+    .language-choice { width: 100%; }
+    .settings-language-select {
+      min-width: 180px;
+      max-width: 52vw;
+      padding: .55rem .7rem !important;
+      background: #231d16;
+      text-transform: none;
+      letter-spacing: .04em;
+    }
+    .settings-language-select option { background: #231d16; color: var(--paper-light); }
+
     /* Game-owned dialogs replace native browser message boxes. Those native
        boxes expose the page's hosting origin in their title, which can reveal
        deployment details that never belong in the player-facing UI. */
@@ -2035,6 +2145,10 @@
       display: none;
     }
     .tutorial-banner.active { display: block; }
+    /* On the Puzzle Card Collection step the banner is informational only.
+       Let taps pass through it so it can never cover the collection button
+       on short/mobile screens. */
+    .tutorial-banner.tutorial-pass-through { pointer-events: none; }
     .tutorial-banner-text {
       font-family: var(--font-card-body);
       font-size: 0.82rem;
@@ -2399,6 +2513,19 @@
       cursor: default !important;
       opacity: 0.72;
     }
+    .collection-add-btn {
+      width: 100%;
+      margin-top: .38rem;
+      padding: .48rem .35rem;
+      border: 1px solid var(--gold);
+      border-radius: 5px;
+      background: var(--cream);
+      color: var(--ink);
+      font: 700 .62rem var(--font-display);
+      letter-spacing: .05em;
+      cursor: pointer;
+    }
+    .collection-add-btn:disabled { opacity: .48; cursor: default; }
     .card-enlarge-stage.locked-detail .big-card-art {
       filter: grayscale(1) brightness(0.42);
       opacity: 0.72;
