@@ -33,8 +33,44 @@
       <button class="menu-btn" id="menuNewRunBtn">New Puzzle</button>
       <button class="menu-btn menu-btn-secondary" id="menuCollectionBtn">Card Collection</button>
       <button class="menu-btn menu-btn-secondary" id="menuLeaderboardBtn">Leaderboard</button>
+      <button class="menu-btn menu-btn-secondary" id="menuSettingsBtn">Settings</button>
       <button class="menu-btn menu-btn-secondary" id="menuContinueBtn" style="display:none;">Continue Run</button>
     </div>
+  </div>
+</div>
+
+<!-- SETTINGS — global preferences stored outside either run save. -->
+<div class="overlay" id="settingsOverlay" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+  <div class="overlay-title" id="settingsTitle" style="font-size:clamp(2.2rem,8vw,3.6rem);">SETTINGS</div>
+  <div class="settings-panel">
+    <div class="settings-row">
+      <div class="settings-label">Music</div>
+      <button class="overlay-btn settings-toggle" id="settingsMusicToggle" type="button">On</button>
+    </div>
+    <div class="settings-row">
+      <div class="settings-label">Sound Effects</div>
+      <button class="overlay-btn settings-toggle" id="settingsSfxToggle" type="button">On</button>
+    </div>
+    <div class="settings-row settings-volume-row">
+      <div class="settings-volume-heading">
+        <label class="settings-label" for="musicVolumeSlider">Music Volume</label>
+        <output id="musicVolumeValue" for="musicVolumeSlider">100%</output>
+      </div>
+      <input id="musicVolumeSlider" type="range" min="0" max="100" step="1" value="100" aria-label="Music volume">
+    </div>
+    <div class="settings-row">
+      <label class="settings-label" for="settingsLanguageSelect">Language</label>
+      <select class="overlay-btn settings-language-select" id="settingsLanguageSelect">
+        <option value="en">English</option>
+        <option value="es">Español</option>
+        <option value="pt-BR">Português (Brasil)</option>
+        <option value="fr">Français</option>
+        <option value="de">Deutsch</option>
+        <option value="zh-CN">简体中文</option>
+        <option value="ja">日本語</option>
+      </select>
+    </div>
+    <button class="overlay-btn menu-btn-secondary" id="settingsBackBtn" type="button">&larr; Back</button>
   </div>
 </div>
 
@@ -68,11 +104,12 @@
       <div class="starter-deck-title">Your Stats</div>
       <div class="stats-grid" id="statsGrid"></div>
     </div>
+    <div class="starter-deck-section" id="puzzleStarterDeckSection" style="display:none">
+      <div class="starter-deck-title" id="puzzleStarterDeckTitle">Puzzle Starter Deck</div>
+      <div style="color:var(--gray-light);text-align:center;margin:.35rem auto .8rem;max-width:620px;">Equip one Common, one Uncommon, and one Rare card. They will be added to the beginning of every Puzzle run after their slots are unlocked.</div>
+      <div class="starter-deck-grid" id="starterDeckGrid"></div>
+    </div>
     <div class="collection-grid" id="collectionGrid"></div>
-    <!-- Glory Edition has no permanent Starter Deck. This hidden mount is
-         retained only so old saves and shared collection rendering remain
-         harmlessly backward-compatible. -->
-    <div class="starter-deck-grid" id="starterDeckGrid" style="display:none"></div>
   </div>
 </div>
 
@@ -105,6 +142,23 @@
   <input type="text" id="nameEntryInput" maxlength="20" placeholder="Your name" autocomplete="off"
     style="font-family:var(--font-mono);font-size:1rem;letter-spacing:0.05em;text-align:center;background:rgba(13,13,13,0.7);border:1.5px solid var(--gold);color:var(--gold-light);padding:0.6rem 1rem;border-radius:4px;width:min(80vw,320px);"/>
   <button class="overlay-btn" id="nameEntrySubmitBtn">Save</button>
+</div>
+
+<!-- LANGUAGE ENTRY — the first thing a brand-new player sees. Existing
+     installations migrate to English without interrupting their saved game;
+     the same choice remains available in Settings afterward. -->
+<div class="overlay" id="languageEntryOverlay" role="dialog" aria-modal="true" aria-labelledby="languageEntryTitle">
+  <div class="overlay-title" id="languageEntryTitle" style="font-size:clamp(1.8rem,7vw,2.8rem);">CHOOSE YOUR LANGUAGE</div>
+  <div class="overlay-sub">Choose the language used throughout King Me. You can change it later in Settings.</div>
+  <div class="language-choice-grid">
+    <button class="overlay-btn language-choice" type="button" data-language="en">English</button>
+    <button class="overlay-btn language-choice" type="button" data-language="es">Español</button>
+    <button class="overlay-btn language-choice" type="button" data-language="pt-BR">Português (Brasil)</button>
+    <button class="overlay-btn language-choice" type="button" data-language="fr">Français</button>
+    <button class="overlay-btn language-choice" type="button" data-language="de">Deutsch</button>
+    <button class="overlay-btn language-choice" type="button" data-language="zh-CN">简体中文</button>
+    <button class="overlay-btn language-choice" type="button" data-language="ja">日本語</button>
+  </div>
 </div>
 
 <!-- ENLARGED CARD -->
@@ -278,7 +332,6 @@
   <button class="overlay-btn" id="levelSelectL1"  style="margin-bottom:0.6rem;">Level 1</button>
   <button class="overlay-btn" id="levelSelectL10" style="margin-bottom:0.6rem;display:none;">Level 10</button>
   <button class="overlay-btn" id="levelSelectL20" style="margin-bottom:1rem;display:none;">Level 20</button>
-  <button class="overlay-btn menu-btn-secondary" id="levelSelectSfxToggle" style="margin-bottom:1rem;">Sound Effects: On</button>
   <button class="overlay-btn menu-btn-secondary"  id="levelSelectCancel">Cancel</button>
 </div>
 
@@ -291,11 +344,15 @@
   <button class="overlay-btn" onclick="restartLevelFresh()" style="background:rgba(60,20,20,0.85);border-color:rgba(180,60,60,0.6);color:#e8c8c8;">Restart Level (Randomised)</button>
 </div>
 
-<script src="media-1.js"></script>
+<script src="bootstrap-and-media-1.js"></script>
 <script src="media-2.js"></script>
 <script src="media-3.js"></script>
 <script src="media-4.js"></script>
 <script src="media-5.js"></script>
+<script src="game-animations.js"></script>
+<script src="new-card-media-1.js"></script>
+<script src="new-card-media-2.js"></script>
+<script src="new-card-media-3.js"></script>
 <script src="game.js"></script>
 </body>
 </html>
